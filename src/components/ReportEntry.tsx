@@ -3,6 +3,7 @@ import { useApp } from '../store';
 import type { DetailKind, ReportDetail, SubmittedReport } from '../types';
 import type { TranslationKey } from '../i18n';
 import { uploadCdrFile } from '../lib/supabase';
+import { checksumFile } from '../lib/checksum';
 import { runLinkAnalysis } from '../lib/aiAnalyzer';
 import { entities, relationships, crimeEvents, centralityScores } from '../data/mockData';
 
@@ -61,11 +62,6 @@ const TAG_STYLE: Record<TagKey, string> = {
 };
 
 const pad = (n: number) => String(n).padStart(3, '0');
-
-const fileChecksum = (name: string, size: number) => {
-  const seed = Array.from(name).reduce((a, c) => a + c.charCodeAt(0), size % 97);
-  return `CHK-${seed.toString(16).padStart(4, '0')}-${(size * 31 % 4096).toString(16)}`;
-};
 
 export default function ReportEntry() {
   const { t, addAuditLog, registerReport, submittedReports, pushFindingsToast } = useApp();
@@ -326,11 +322,13 @@ export default function ReportEntry() {
                         type="file"
                         accept=".csv,.xlsx,.json"
                         className="sr-only"
-                        onChange={e => {
+                        onChange={async e => {
                           const f = e.target.files?.[0];
                           if (!f) return;
-                          setFileInfo({ name: f.name, size: `${(f.size / 1024).toFixed(1)} KB`, checksum: fileChecksum(f.name, f.size), file: f });
+                          setFileInfo({ name: f.name, size: `${(f.size / 1024).toFixed(1)} KB`, checksum: '…', file: f });
                           setValueInput(f.name);
+                          const checksum = await checksumFile(f);
+                          setFileInfo(prev => (prev?.file === f ? { ...prev, checksum } : prev));
                         }}
                       />
                     </label>

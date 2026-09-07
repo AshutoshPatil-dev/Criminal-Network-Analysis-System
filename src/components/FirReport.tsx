@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useApp } from '../store';
 import type { FirAttachment, FirDocument } from '../types';
 import { extractFirFromImage } from '../lib/firExtractor';
+import { checksumFile } from '../lib/checksum';
 import { uploadCdrFile } from '../lib/supabase';
 
 const emptyTemplate = (o: { name: string; rank: string; district: string; state: string; badgeNumber: string }): Omit<FirDocument, 'id' | 'createdAt' | 'createdBy'> => ({
@@ -31,18 +32,12 @@ const emptyTemplate = (o: { name: string; rank: string; district: string; state:
   reportRef: undefined,
 });
 
-const fileChecksum = (name: string, size: number) => {
-  const seed = Array.from(name).reduce((a, c) => a + c.charCodeAt(0), size % 97);
-  return `CHK-${seed.toString(16).padStart(4, '0')}-${(size * 31 % 4096).toString(16)}`;
-};
-
 const fmtSize = (n: number) => n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 
 type FieldKey = keyof Omit<FirDocument, 'id' | 'ref' | 'createdAt' | 'createdBy' | 'attachments' | 'ocrSource' | 'reportRef'>;
 
 const OCR_HINT: Record<string, string> = {
-  real: 'tesseract.js (browser) — reads text from the uploaded photo',
-  mock: 'Demo OCR — bundled sample FIR used offline; verify every field before filing',
+  tesseract: 'tesseract.js (browser) — reads text from the uploaded photo',
 };
 
 function FirField({ label, value, on, autoFilled, wide }: {
@@ -75,6 +70,7 @@ export default function FirReport() {
   const [ocrInfo, setOcrInfo] = useState<{ provider: string; confidence: Record<string, number>; source: string } | null>(null);
   const [ocrImage, setOcrImage] = useState<string | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
+  const [handwriting, setHandwriting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [attachmentKind, setAttachmentKind] = useState<FirAttachment['kind']>('call_records');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +106,7 @@ export default function FirReport() {
     setOcrBusy(true);
     setNotice(null);
     try {
-      const res = await extractFirFromImage(file);
+      const res = await extractFirFromImage(file, { handwriting });
       setDoc(prev => {
         const merged: typeof prev = { ...prev, ocrSource: file.name };
         (Object.keys(res.fields) as FieldKey[]).forEach(k => {
@@ -121,7 +117,7 @@ export default function FirReport() {
       });
       setOcrInfo({ provider: res.provider, confidence: res.confidence, source: file.name });
       setOcrImage(URL.createObjectURL(file));
-      addAuditLog({ action: 'ocr_fir', level: 'info', summary: `OCR intake on ${file.name} (${res.provider === 'tesseract' ? 'tesseract.js' : 'demo'}); ${Object.keys(res.confidence).length} fields extracted.`, target: docRef });
+      addAuditLog({ action: 'ocr_fir', level: 'info', summary: `OCR intake on ${file.name} (tesseract.js); ${Object.keys(res.confidence).length} fields extracted.`, target: docRef });
       setNotice(`OCR extracted ${Object.keys(res.confidence).length} fields — please verify before filing.`);
     } finally {
       setOcrBusy(false);
@@ -130,11 +126,11 @@ export default function FirReport() {
 
   const onAddAttachment = async (file: File) => {
     const att: FirAttachment = {
-      id: `att-${Date.now()}`,
+      id: `att-${crypto.randomUUID()}`,
       kind: attachmentKind,
       name: file.name,
       size: fmtSize(file.size),
-      checksum: fileChecksum(file.name, file.size),
+      checksum: await checksumFile(file),
       createdAt: new Date().toISOString(),
       note: attachmentKind === 'call_records' ? 'Call Data Record' : attachmentKind === 'transaction_history' ? 'Bank / transaction records' : 'Other evidence',
     };
@@ -213,6 +209,13 @@ export default function FirReport() {
           />
           <section className="bg-white rounded-xl shadow-sm border border-nexus-border p-4">
             <h2 className="font-semibold text-sm mb-2">{t('firOcrPanel')}</h2>
+            <label className="flex items-start gap-2 text-xs text-nexus-text-secondary cursor-pointer select-none mb-1">
+              <input type="checkbox" checked={handwriting} onChange={e => setHandwriting(e.target.checked)} className="mt-0.5 accent-nexus-blue" />
+              <span>
+                <span className="font-semibold text-nexus-text">{t('handwritingOcr')}</span>
+                <span className="block mt-0.5">{t('handwritingOcrHint')}</span>
+              </span>
+            </label>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={ocrBusy}
@@ -224,7 +227,7 @@ export default function FirReport() {
             {ocrInfo && (
               <div className="mt-3">
                 <p className="text-xs font-semibold text-nexus-text">
-                  OCR: {ocrInfo.provider === 'tesseract' ? 'tesseract.js' : 'demo'} · {Object.keys(ocrInfo.confidence).length} fields
+                  OCR: tesseract.js · {Object.keys(ocrInfo.confidence).length} fields
                 </p>
                 <p className="text-[11px] text-nexus-text-secondary mt-1">{OCR_HINT[ocrInfo.provider]}</p>
                 <details className="mt-2">

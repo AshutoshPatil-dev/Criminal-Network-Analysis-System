@@ -2,8 +2,15 @@
 -- Paste this whole file into the Supabase SQL Editor and run it once.
 -- Then set VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in the frontend.
 
--- NOTE: policies below are intentionally permissive for the hackathon demo (read/write for anon).
--- Before any production use, restrict everything to authenticated roles and RLS on auth.uid().
+-- SECURITY MODEL
+-- * Officer rosters live in `profiles`, keyed to auth.users(id), and are locked
+--   down with RLS: only the signed-in admin (is_admin()) can create/update/delete
+--   them; a user can always read their own row. This is the table that holds
+--   real people, so it is deliberately NOT permissive.
+-- * Case datasets / reports / FIR documents / audit log / storage remain
+--   demo-permissive (write allowed for anon) so the frontend's write-through
+--   keeps working in a demo. Before production, restrict these to the
+--   `authenticated` role and narrow with auth.uid() checks. See README.
 
 create extension if not exists "pgcrypto";
 
@@ -80,21 +87,32 @@ create table if not exists public.audit_logs (
 );
 
 -- ---------------------------------------------------------------------------
--- Officers (law-enforcement user profiles: rank, badge, district, contact)
+-- Officer profiles (keyed to auth.users — this is the protected roster)
 -- ---------------------------------------------------------------------------
-create table if not exists public.officers (
-  id text primary key,
+create table if not exists public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  email text not null unique,
   name text not null,
   badge_number text,
   rank text,
   district text,
   state text,
-  email text unique,
   phone text,
   role text not null default 'case-officer' check (role in ('case-officer','analyst','admin')),
   created_at timestamptz not null default now(),
   updated_at timestamptz
 );
+
+-- security definer: an RLS policy must check the admin role without recursing
+-- into the same table's policies, so the lookup runs with definer rights here.
+create or replace function public.is_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
+  );
+$$;
+
+grant execute on function public.is_admin() to anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- FIR documents (printable/exportable records, with OCR source + attachments)
@@ -131,15 +149,30 @@ create table if not exists public.fir_documents (
 );
 
 -- ---------------------------------------------------------------------------
--- Row Level Security (demo-permissive)
+-- Row Level Security
+-- profiles / officer roster: locked down (admin manages, owner reads self).
 -- ---------------------------------------------------------------------------
+alter table public.profiles enable row level security;
+
+create policy "profiles read own or admin" on public.profiles
+  for select using (id = auth.uid() or public.is_admin());
+
+create policy "profiles insert admin only" on public.profiles
+  for insert with check (public.is_admin());
+
+create policy "profiles update admin only" on public.profiles
+  for update using (public.is_admin()) with check (public.is_admin());
+
+create policy "profiles delete admin only" on public.profiles
+  for delete using (public.is_admin());
+
+-- Client-side guest/demo datasets stay permissive for the demo build.
 alter table public.entities enable row level security;
 alter table public.relationships enable row level security;
 alter table public.crime_events enable row level security;
 alter table public.reports enable row level security;
 alter table public.report_detail_history enable row level security;
 alter table public.audit_logs enable row level security;
-alter table public.officers enable row level security;
 alter table public.fir_documents enable row level security;
 
 create policy "demo read entities" on public.entities for select using (true);
@@ -149,13 +182,11 @@ create policy "demo write reports" on public.reports for all using (true) with c
 create policy "demo write detail_history" on public.report_detail_history for all using (true) with check (true);
 create policy "demo insert audit_logs" on public.audit_logs for insert with check (true);
 create policy "demo read audit_logs" on public.audit_logs for select using (true);
-create policy "demo write officers" on public.officers for all using (true) with check (true);
-create policy "demo read officers" on public.officers for select using (true);
 create policy "demo write fir_documents" on public.fir_documents for all using (true) with check (true);
 create policy "demo read fir_documents" on public.fir_documents for select using (true);
 
 -- ---------------------------------------------------------------------------
--- Storage bucket for CDR / file uploads (private by default)
+-- Storage bucket for CDR / file uploads
 -- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public)
 values ('case-files', 'case-files', false)
@@ -168,3 +199,22 @@ create policy "demo upload case-files" on storage.objects
 create policy "demo read case-files" on storage.objects
   for select to authenticated, anon
   using (bucket_id = 'case-files');
+
+-- ---------------------------------------------------------------------------
+-- Bootstrap the first admin (run once after creating your own Auth account):
+-- ---------------------------------------------------------------------------
+-- 1. Auth → Users → Add user → email + password for yourself.
+-- 2. In SQL: insert a profile for that auth user so they are an admin:
+--
+--   insert into public.profiles (id, email, name, badge_number, rank, district, state, phone, role)
+--   values (
+--     (select id from auth.users where email = 'you@example.com'),
+--     'you@example.com',
+--     'Your Name', 'BR/ADM/0001', 'Inspector General', 'Patna', 'Bihar', '+91-…', 'admin'
+--   )
+--   on conflict (id) do update set role = 'admin';
+--
+-- Thereafter, that admin adds officers from the Officers screen: each officer
+-- gets an Auth user (email + initial password) plus a profile here.
+-- NOTE: deleting a profile does not delete the Auth user (client keys cannot);
+-- remove the Auth user manually in Auth → Users if needed.

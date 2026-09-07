@@ -1,4 +1,4 @@
-import type { Entity, Relationship, CrimeEvent, CentralityScore, Community, Anomaly, AuditLogEntry, Officer } from '../types';
+import type { Entity, Relationship, CrimeEvent, CentralityScore, Community, Anomaly, AuditLogEntry } from '../types';
 
 export const entities: Entity[] = [
   { id: 'p1', type: 'person', name: 'Rajesh Kumar Singh', attributes: { age: '42', address: 'Patna, Bihar', role: 'Kingpin', aliases: 'R.K. Singh, Raju Bhai' }, riskScore: 95 },
@@ -306,56 +306,5 @@ export const auditLogSeeds: AuditLogEntry[] = [
     action: 'login',
     level: 'info',
     summary: 'Scheduled data sync completed — 0 integrity errors.',
-  },
-];
-
-export const officerSeeds: Officer[] = [
-  {
-    id: 'off-1',
-    name: 'Inspector R. Sharma',
-    badgeNumber: 'BR/INSP/1124',
-    rank: 'Inspector',
-    district: 'Patna',
-    state: 'Bihar',
-    email: 'r.sharma@biharpolice.in',
-    phone: '+91-9431122334',
-    role: 'case-officer',
-    createdAt: '2025-11-02T09:00:00.000Z',
-  },
-  {
-    id: 'off-2',
-    name: 'Constable M. Kumar',
-    badgeNumber: 'BR/CON/7781',
-    rank: 'Constable',
-    district: 'Gaya',
-    state: 'Bihar',
-    email: 'm.kumar@biharpolice.in',
-    phone: '+91-9431223345',
-    role: 'case-officer',
-    createdAt: '2025-12-14T10:30:00.000Z',
-  },
-  {
-    id: 'off-3',
-    name: 'Sub-Inspector N. Pandey',
-    badgeNumber: 'BR/SI/3350',
-    rank: 'Sub-Inspector',
-    district: 'Nalanda',
-    state: 'Bihar',
-    email: 'n.pandey@biharpolice.in',
-    phone: '+91-9431334456',
-    role: 'case-officer',
-    createdAt: '2026-01-08T08:15:00.000Z',
-  },
-  {
-    id: 'off-4',
-    name: 'DSP A. Verma',
-    badgeNumber: 'BR/DSO/9012',
-    rank: 'Dy. Supdt. of Police',
-    district: 'Patna',
-    state: 'Bihar',
-    email: 'a.verma@biharpolice.in',
-    phone: '+91-9431445567',
-    role: 'analyst',
-    createdAt: '2026-02-19T14:45:00.000Z',
   },
 ];

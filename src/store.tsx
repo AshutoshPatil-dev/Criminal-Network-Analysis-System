@@ -2,8 +2,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode, type Di
 import type { Entity, AuditLogEntry, SubmittedReport, Officer, FirDocument } from './types';
 import type { TranslationKey } from './i18n';
 import { translations } from './i18n';
-import { entities as allEntities, auditLogSeeds, officerSeeds } from './data/mockData';
-import { persistAuditLog, persistReport, persistOfficer, deleteOfficerRow, persistFirDocument, signInWithPassword, signUpWithEmail, signOutSession } from './lib/supabase';
+import { entities as allEntities, auditLogSeeds } from './data/mockData';
+import { persistAuditLog, persistReport, updateOfficerRow, deleteOfficerRow, persistFirDocument, createOfficerAccount, fetchProfiles, fetchMyProfile, signInWithPassword, signOutSession, getSessionUser, supabaseConfigured } from './lib/supabase';
 
 export type Screen = 'dashboard' | 'graph' | 'profile' | 'patterns' | 'report' | 'logs' | 'analysis' | 'fir' | 'officers';
 
@@ -23,7 +23,7 @@ const parseHash = (): { screen: Screen; entityId: string | null } => {
   return { screen: 'dashboard', entityId: null };
 };
 
-export const DEFAULT_OFFICER = 'Inspector R. Sharma';
+export const DEFAULT_OFFICER = 'System';
 const SESSION_KEY = 'nexus:session';
 
 interface AppState {
@@ -47,12 +47,11 @@ interface AppState {
   setSidebarCollapsed: (c: boolean) => void;
   user: Officer | null;
   signIn: (email: string, password: string) => Promise<string | null>;
-  signUp: (o: Omit<Officer, 'id' | 'createdAt'>, password: string) => Promise<string | null>;
-  signInDemo: (officerId: string) => void;
   signOut: () => void;
   currentUser: string;
   officers: Officer[];
-  addOfficer: (o: Omit<Officer, 'id' | 'createdAt'>) => string;
+  refreshOfficers: () => Promise<void>;
+  addOfficer: (o: Omit<Officer, 'id' | 'createdAt'>, password: string) => Promise<string | null>;
   updateOfficer: (id: string, patch: Partial<Omit<Officer, 'id' | 'createdAt'>>) => void;
   removeOfficer: (id: string) => void;
   firDocuments: FirDocument[];
@@ -80,14 +79,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(auditLogSeeds);
   const [submittedReports, setSubmittedReports] = useState<SubmittedReport[]>([]);
   const [findingsToast, setFindingsToast] = useState<AppState['findingsToast']>(null);
-  const [officers, setOfficers] = useState<Officer[]>(officerSeeds);
+  const [officers, setOfficers] = useState<Officer[]>([]);
   const [firDocuments, setFirDocuments] = useState<FirDocument[]>([]);
   const [user, setUser] = useState<Officer | null>(() => {
     const saved = localStorage.getItem(SESSION_KEY);
     if (!saved) return null;
     try {
-      const parsed = JSON.parse(saved) as Officer;
-      return officerSeeds.find(o => o.id === parsed.id) || parsed;
+      return JSON.parse(saved) as Officer;
     } catch {
       return null;
     }
@@ -143,7 +141,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const actorName = () => user?.name || DEFAULT_OFFICER;
 
   const addAuditLog: AppState['addAuditLog'] = (entry) => {
-    const id = `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const id = `log-${crypto.randomUUID()}`;
     const full: AuditLogEntry = {
       ...entry,
       id,
@@ -155,48 +153,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return id;
   };
 
-  const applyUser = (o: Officer) => {
+  const persistSession = (o: Officer, recordLogin: boolean) => {
     setUser(o);
     localStorage.setItem(SESSION_KEY, JSON.stringify(o));
-    addAuditLog({ action: 'login', level: 'info', summary: `${o.name} signed in (${o.district}, ${o.state}).`, target: o.badgeNumber });
+    if (recordLogin) {
+      addAuditLog({ action: 'login', level: 'info', summary: `${o.name} signed in (${o.district}, ${o.state}).`, target: o.badgeNumber });
+    }
   };
+
+  const applyUser = (o: Officer) => persistSession(o, true);
+
+  // When a real Supabase project is connected, reconcile the app session with
+  // the (server-validated) Supabase session on boot and load the roster from
+  // profiles. A forged local session object is rejected. Without a configured
+  // project there is no sign-in: the roster lives entirely in Supabase now.
+  useEffect(() => {
+    if (!supabaseConfigured) return;
+    let cancelled = false;
+    void (async () => {
+      const su = await getSessionUser();
+      if (cancelled) return;
+      if (!su) {
+        setUser(null);
+        localStorage.removeItem(SESSION_KEY);
+        return;
+      }
+      const profile = await fetchMyProfile();
+      if (cancelled) return;
+      if (!profile) {
+        // Valid auth session but no officer profile → not an officer.
+        setUser(null);
+        localStorage.removeItem(SESSION_KEY);
+        return;
+      }
+      setUser({ ...profile, updatedAt: new Date().toISOString() });
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ ...profile, updatedAt: new Date().toISOString() }));
+      const rows = await fetchProfiles();
+      if (!cancelled && rows.length) setOfficers(rows);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabaseConfigured]);
 
   const signIn: AppState['signIn'] = async (email, password) => {
-    const officer = officers.find(o => o.email.toLowerCase() === email.trim().toLowerCase());
+    if (!supabaseConfigured) return 'Supabase is not configured — check your .env and redeploy.';
     const ok = await signInWithPassword(email.trim(), password);
-    if (!ok && !officer) return 'Invalid email or password.';
-    if (!ok && officer) {
-      // Offline demo: accept any password for a registered officer profile
-    }
-    if (officer) {
-      applyUser({ ...officer, updatedAt: new Date().toISOString() });
-      return null;
-    }
-    // Email without an officer profile → create a transient profile
-    const id = `off-${Date.now()}`;
-    const name = email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const demo: Officer = {
-      id, name: name || 'Officer', badgeNumber: 'BR/TMP/0000', rank: 'Officer',
-      district: '—', state: '—', email, phone: '—', role: 'case-officer',
-      createdAt: new Date().toISOString(),
-    };
-    applyUser(demo);
+    if (!ok) return 'Invalid email or password.';
+    // The officer must exist in profiles (admin-managed).
+    const profile = await fetchMyProfile();
+    if (!profile) return 'No officer profile found for this account. Contact an administrator.';
+    applyUser({ ...profile, updatedAt: new Date().toISOString() });
     return null;
-  };
-
-  const signUp: AppState['signUp'] = async (o, password) => {
-    const exists = officers.some(x => x.email.toLowerCase() === o.email.toLowerCase());
-    if (exists) return 'An officer with this email already exists.';
-    const ok = await signUpWithEmail(o.email, password);
-    if (!ok) return 'Registration failed (remote auth unavailable).';
-    addOfficer(o);
-    signIn(o.email, password);
-    return null;
-  };
-
-  const signInDemo = (officerId: string) => {
-    const officer = officers.find(o => o.id === officerId) || officerSeeds.find(o => o.id === officerId);
-    if (officer) applyUser(officer);
   };
 
   const signOut = () => {
@@ -207,19 +214,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(SESSION_KEY);
   };
 
-  const addOfficer: AppState['addOfficer'] = (o) => {
-    const id = `off-${Date.now()}`;
-    const full: Officer = { ...o, id, createdAt: new Date().toISOString() };
+  const refreshOfficers: AppState['refreshOfficers'] = async () => {
+    if (!supabaseConfigured) return;
+    const rows = await fetchProfiles();
+    if (rows.length > 0) setOfficers(rows);
+  };
+
+  const addOfficer: AppState['addOfficer'] = async (o, password) => {
+    if (!supabaseConfigured) return 'Supabase is not configured — check your .env and redeploy.';
+    if (user?.role !== 'admin') return 'Only an admin can add officers.';
+    const res = await createOfficerAccount(o, password);
+    if (!res.ok) return res.error || 'Could not create officer account.';
+    const full: Officer = { ...o, id: res.id || `off-${crypto.randomUUID()}`, createdAt: new Date().toISOString() };
     setOfficers(prev => [full, ...prev]);
-    void persistOfficer(full);
     addAuditLog({ action: 'create_officer', level: 'info', summary: `Added officer ${full.rank} ${full.name} (${full.district}, ${full.state}).`, target: full.badgeNumber });
-    return id;
+    return null;
   };
 
   const updateOfficer: AppState['updateOfficer'] = (id, patch) => {
     setOfficers(prev => prev.map(o => o.id === id ? { ...o, ...patch, updatedAt: new Date().toISOString() } : o));
-    const updated = { id, ...patch };
-    void persistOfficer(updated as Officer);
+    void updateOfficerRow(id, patch);
     addAuditLog({ action: 'update_officer', level: 'info', summary: `Updated officer profile ${patch.name || id}.`, target: id });
     setUser(u => u && u.id === id ? { ...u, ...patch, updatedAt: new Date().toISOString() } : u);
   };
@@ -232,7 +246,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const saveFirDocument: AppState['saveFirDocument'] = (d) => {
-    const id = d.id || `fir-${Date.now()}`;
+    const id = d.id || `fir-${crypto.randomUUID()}`;
     const full: FirDocument = {
       ...d,
       id,
@@ -304,9 +318,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       expandedNodeIds, setExpandedNodeIds,
       dateRange, setDateRange,
       sidebarCollapsed, setSidebarCollapsed,
-      user, signIn, signUp, signInDemo, signOut,
+      user, signIn, signOut,
       currentUser: actorName(),
-      officers, addOfficer, updateOfficer, removeOfficer,
+      officers, refreshOfficers, addOfficer, updateOfficer, removeOfficer,
       firDocuments, saveFirDocument,
       auditLogs, addAuditLog,
       submittedReports, registerReport,
