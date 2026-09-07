@@ -1,7 +1,11 @@
+import { useState } from 'react';
 import { useApp } from '../store';
+import { LANGUAGES } from '../i18n';
 
 export default function Navbar() {
   const { t, lang, setLang, searchQuery, setSearchQuery, searchResults, openProfile, user, setActiveScreen, signOut, crimeEvents, firDocuments, selectFirDocument, openCrimeOnGraph } = useApp();
+  const [langOpen, setLangOpen] = useState(false);
+  const current = LANGUAGES.find(l => l.code === lang) ?? LANGUAGES[0];
 
   const q = searchQuery.trim().toLowerCase();
   const firMatches = q.length > 0 ? crimeEvents.filter(c =>
@@ -105,13 +109,46 @@ export default function Navbar() {
               <span aria-hidden="true">≡</span>
               <span className="hidden sm:inline">{t('logs')}</span>
             </button>
-            <button
-              onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}
-              className="px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-md transition"
-              aria-label={t('language')}
-            >
-              {lang === 'en' ? 'हिन्दी' : 'English'}
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setLangOpen(o => !o)}
+                className="px-3 py-1.5 text-sm font-medium bg-white/10 hover:bg-white/20 rounded-md transition flex items-center gap-1.5"
+                aria-label={t('language')}
+                aria-haspopup="listbox"
+                aria-expanded={langOpen}
+              >
+                <span aria-hidden="true">🌐</span>
+                <span>{current.name}</span>
+                <span aria-hidden="true" className="text-[10px]">
+                  {langOpen ? '▲' : '▼'}
+                </span>
+              </button>
+              {langOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setLangOpen(false)} />
+                  <ul
+                    role="listbox"
+                    className="absolute right-0 z-40 mt-1.5 min-w-[160px] rounded-md bg-white border border-nexus-border shadow-lg overflow-hidden"
+                  >
+                    {LANGUAGES.map(l => (
+                      <li key={l.code}>
+                        <button
+                          role="option"
+                          aria-selected={l.code === lang}
+                          onClick={() => { setLang(l.code); setLangOpen(false); }}
+                          className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-nexus-surface transition ${
+                            l.code === lang ? 'font-semibold text-nexus-blue' : 'text-nexus-text'
+                          }`}
+                        >
+                          {l.code === lang && <span aria-hidden="true">✓</span>}
+                          <span className={l.code === lang ? '' : 'pl-[18px]'}>{l.name}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
             <div
               className="flex items-center gap-2 bg-white/10 rounded-full pl-1 pr-3 py-1"
               title={user ? `${user.name} · ${user.rank} · ${user.district}, ${user.state}` : ''}

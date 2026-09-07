@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../store';
 
 export default function Login() {
-  const { t, lang, signIn } = useApp();
+  const { t, signIn } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export default function Login() {
               <li>· Officer &amp; evidence management</li>
             </ul>
           </div>
-          <p className="text-xs text-blue-300 mt-8">{lang === 'hi' ? 'अधिकृत कर्मियों के लिए' : 'Authorized personnel only'}</p>
+          <p className="text-xs text-blue-300 mt-8">{t('loginAuthorized')}</p>
         </div>
 
         <div className="bg-white p-10">
@@ -73,7 +73,7 @@ export default function Login() {
               {busy ? '…' : t('signIn')}
             </button>
             <p className="text-xs text-nexus-text-secondary leading-relaxed">
-              {lang === 'hi' ? 'अपने अधिकृत अधिकारी क्रेडेंशियल से साइन इन करें।' : 'Sign in with your officer credentials.'}
+              {t('loginPrompt')}
             </p>
           </form>
         </div>
