@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --color-nexus-blue: #0B3D91;
+  --color-nexus-blue-light: #1A52B8;
+  --color-nexus-blue-dark: #062A6B;
+  --color-nexus-accent: #FFC107;
+  --color-nexus-surface: #F8F9FA;
+  --color-nexus-card: #FFFFFF;
+  --color-nexus-border: #E2E8F0;
+  --color-nexus-text: #1A202C;
+  --color-nexus-text-secondary: #64748B;
+  --color-nexus-risk-high: #DC2626;
+  --color-nexus-risk-medium: #F59E0B;
+  --color-nexus-risk-low: #16A34A;
+  --font-sans: 'Inter', 'Noto Sans', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-nexus-surface);
+  color: var(--color-nexus-text);
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-nexus-blue);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+/* FIR print layout — hide everything except the document */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #fir-print-area,
+  #fir-print-area * {
+    visibility: visible;
+  }
+  #fir-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none;
+    border: none;
+    padding: 0;
+  }
+  .no-print {
+    display: none;
+  }
+}
