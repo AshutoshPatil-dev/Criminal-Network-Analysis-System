@@ -153,6 +153,26 @@ function getCytoscapeElements(graph: GraphData, expandedIds: string[], dateRange
   return [...nodes as cytoscape.ElementDefinition[], ...edges];
 }
 
+const colorForNode = (ele: NodeSingular, mode: 'type' | 'community' | 'risk'): string => {
+  const cid = ele.data('communityId') as number;
+  const score = ele.data('riskScore') as number;
+  if (mode === 'community') return cid >= 0 ? communityColors[cid % communityColors.length] : '#94A3B8';
+  if (mode === 'risk') return score >= 70 ? '#DC2626' : score >= 40 ? '#F59E0B' : '#16A34A';
+  return entityTypeColors[ele.data('type') as EntityType] || '#94A3B8';
+};
+
+// Re-color nodes in place so switching the Color By mode never rebuilds the graph.
+const applyColors = (cy: Core, mode: 'type' | 'community' | 'risk') => {
+  cy.nodes().forEach(n => { n.style('background-color', colorForNode(n, mode)); });
+};
+
+// Dim non-matching types in place when the type filter changes.
+const applyFilter = (cy: Core, type: EntityType | 'all') => {
+  cy.elements().removeClass('faded unfaded focused');
+  if (type === 'all') return;
+  cy.nodes().forEach(n => { if (n.data('type') !== type) n.addClass('faded'); });
+};
+
 interface NodeTooltipData {
   name: string;
   id: string;
@@ -185,13 +205,24 @@ export default function NetworkGraph() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const layoutRef = useRef<cytoscape.Layouts | null>(null);
-  const { t, expandedNodeIds, setExpandedNodeIds, dateRange, setDateRange, openProfile, setSelectedEntityId, entities, relationships, crimeEvents, communities, centralityScores } = useApp();
+  const { t, expandedNodeIds, setExpandedNodeIds, dateRange, setDateRange, openProfile, entities, relationships, crimeEvents, communities, centralityScores } = useApp();
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const [colorBy, setColorBy] = useState<'type' | 'community' | 'risk'>('type');
   const [filterType, setFilterType] = useState<EntityType | 'all'>('all');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [entityQuery, setEntityQuery] = useState('');
   const [timelineOpen, setTimelineOpen] = useState(true);
+
+  // Latest openProfile for the graph event handlers, kept fresh without making
+  // the graph builder (or its cytoscape instance) depend on its identity.
+  const openProfileRef = useRef(openProfile);
+  useEffect(() => { openProfileRef.current = openProfile; }, [openProfile]);
+  // Same for the style appliers: reading via refs keeps the builder from
+  // rebuilding the whole graph when only the Color By / type filter change.
+  const colorByRef = useRef(colorBy);
+  useEffect(() => { colorByRef.current = colorBy; }, [colorBy]);
+  const filterTypeRef = useRef(filterType);
+  useEffect(() => { filterTypeRef.current = filterType; }, [filterType]);
 
   const entityMatches = useMemo(() => {
     const q = entityQuery.trim().toLowerCase();
@@ -306,13 +337,7 @@ export default function NetworkGraph() {
           selector: 'node',
           style: {
             label: 'data(icon)',
-            'background-color': (ele: NodeSingular) => {
-              const cid = ele.data('communityId') as number;
-              const score = ele.data('riskScore') as number;
-              if (colorBy === 'community') return cid >= 0 ? communityColors[cid % communityColors.length] : '#94A3B8';
-              if (colorBy === 'risk') return score >= 70 ? '#DC2626' : score >= 40 ? '#F59E0B' : '#16A34A';
-              return entityTypeColors[ele.data('type') as EntityType] || '#94A3B8';
-            },
+            'background-color': '#94A3B8',
             'background-opacity': 0.9,
             color: '#FFFFFF',
             'font-size': 'data(iconSize)',
@@ -517,7 +542,7 @@ export default function NetworkGraph() {
       const nodeId = node.data('id') as string;
       const now = performance.now();
       if (lastTap.id === nodeId && now - lastTap.t < 380) {
-        openProfile(nodeId);
+        openProfileRef.current(nodeId);
         lastTap = { id: '', t: 0 };
         return;
       }
@@ -541,18 +566,20 @@ export default function NetworkGraph() {
 
     // Native double-click/double-tap → open dossier
     const openDossier = (id: string) => {
-      openProfile(id);
+      openProfileRef.current(id);
     };
     cy.on('dbltap', 'node', (evt) => {
       openDossier(evt.target.data('id') as string);
     });
 
     cy.resize();
+    applyColors(cy, colorByRef.current);
+    applyFilter(cy, filterTypeRef.current);
 
     cyRef.current = cy;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__nexusCy = cy;
-  }, [expandedNodeIds, dateRange, colorBy, filterType, t, openProfile, setSelectedEntityId, setExpandedNodeIds, toggleNode, entities, relationships, crimeEvents, communities]);
+  }, [expandedNodeIds, dateRange, entities, relationships, crimeEvents, communities]);
 
   useEffect(() => {
     buildGraph();
@@ -568,17 +595,19 @@ export default function NetworkGraph() {
     };
   }, [buildGraph]);
 
-  // Dim non-matching types when filtered
+  // Dim non-matching types when filtered (in place — no graph rebuild)
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    cy.elements().removeClass('faded unfaded focused');
-    if (filterType !== 'all') {
-      cy.nodes().forEach(n => {
-        if (n.data('type') !== filterType) n.addClass('faded');
-      });
-    }
+    applyFilter(cy, filterType);
   }, [filterType]);
+
+  // Re-color nodes when the Color By mode changes (in place — no graph rebuild)
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    applyColors(cy, colorBy);
+  }, [colorBy]);
 
   // Escape closes the side panel · Enter opens the dossier of the selected node
   useEffect(() => {
