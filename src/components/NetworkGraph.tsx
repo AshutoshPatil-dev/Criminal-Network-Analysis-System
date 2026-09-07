@@ -16,6 +16,24 @@ const relTypeStyles: Record<RelationshipType, { color: string; dash?: string }> 
 
 const communityColors = ['#0B3D91', '#16A34A', '#F59E0B', '#DC2626'];
 
+// Visual glyphs used on the graph canvas — person 👤, phone 📱, vehicle 🚗,
+// location 📍, organization 🏢 — plus the base node size per type.
+const TYPE_ICON: Record<EntityType, string> = {
+  person: '\u{1F464}',
+  phone: '\u{1F4F1}',
+  vehicle: '\u{1F697}',
+  location: '\u{1F4CD}',
+  org: '\u{1F3E2}',
+};
+
+const TYPE_BASE_SIZE: Record<EntityType, number> = {
+  person: 26,
+  phone: 24,
+  vehicle: 26,
+  location: 24,
+  org: 30,
+};
+
 interface MergedRel {
   source: string;
   target: string;
@@ -89,17 +107,19 @@ function getCytoscapeElements(graph: GraphData, expandedIds: string[], dateRange
     .filter(e => involvedIds.has(e.id))
     .map(e => {
       const community = communities.find(c => c.members.includes(e.id));
-      const nodeSize = e.type === 'person' ? 26 + e.riskScore * 0.22 : e.type === 'org' ? 32 : 18 + e.riskScore * 0.12;
+      const nodeSize = e.type === 'person' ? 26 + e.riskScore * 0.22 : TYPE_BASE_SIZE[e.type] + e.riskScore * 0.08;
       return {
         data: {
           id: e.id,
           label: e.name,
           fullName: e.name,
+          icon: TYPE_ICON[e.type],
           type: e.type,
           riskScore: e.riskScore,
           attributes: e.attributes,
           communityId: community?.id ?? -1,
           size: nodeSize,
+          iconSize: Math.max(12, Math.round(nodeSize / 2)),
         },
       };
     });
@@ -254,7 +274,7 @@ export default function NetworkGraph() {
         {
           selector: 'node',
           style: {
-            label: 'data(label)',
+            label: 'data(icon)',
             'background-color': (ele: NodeSingular) => {
               const cid = ele.data('communityId') as number;
               const score = ele.data('riskScore') as number;
@@ -263,15 +283,13 @@ export default function NetworkGraph() {
               return entityTypeColors[ele.data('type') as EntityType] || '#94A3B8';
             },
             'background-opacity': 0.9,
-            color: '#334155',
-            'font-size': '11px',
-            'font-weight': 600,
-            'text-wrap': 'wrap',
-            'text-max-width': '110px',
+            color: '#FFFFFF',
+            'font-size': 'data(iconSize)',
+            'font-weight': 700,
+            'text-wrap': 'none',
             'text-halign': 'center',
-            'text-valign': 'bottom',
-            'text-margin-y': 6,
-            'text-opacity': 0,
+            'text-valign': 'center',
+            'text-opacity': 1,
             width: 'data(size)',
             height: 'data(size)',
             'border-width': 2,
@@ -287,19 +305,19 @@ export default function NetworkGraph() {
         },
         {
           selector: 'node[type = "phone"]',
-          style: { 'shape': 'round-rectangle', 'width': 16, 'height': 16 },
+          style: { 'shape': 'round-rectangle' },
         },
         {
           selector: 'node[type = "vehicle"]',
-          style: { 'shape': 'diamond', 'width': 20, 'height': 20 },
+          style: { 'shape': 'diamond' },
         },
         {
           selector: 'node[type = "location"]',
-          style: { 'shape': 'hexagon', 'width': 20, 'height': 20 },
+          style: { 'shape': 'hexagon' },
         },
         {
           selector: 'node[type = "org"]',
-          style: { 'shape': 'round-rectangle', 'width': 26, 'height': 26 },
+          style: { 'shape': 'round-rectangle' },
         },
         {
           selector: 'edge',
@@ -321,9 +339,16 @@ export default function NetworkGraph() {
         {
           selector: 'node.focused',
           style: {
+            label: 'data(label)',
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'text-margin-y': 8,
+            'text-wrap': 'wrap',
+            'text-max-width': '120px',
             'text-opacity': 1,
             'font-size': '12px',
             'font-weight': 700,
+            'color': '#1F2937',
             'background-opacity': 1,
             'z-index': 500,
           },
@@ -331,9 +356,16 @@ export default function NetworkGraph() {
         {
           selector: 'node.selected',
           style: {
+            label: 'data(label)',
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'text-margin-y': 8,
+            'text-wrap': 'wrap',
+            'text-max-width': '120px',
             'border-width': 4,
             'border-color': '#0B3D91',
             'text-opacity': 1,
+            'color': '#1F2937',
             'z-index': 600,
             'background-opacity': 1,
           },
@@ -525,6 +557,12 @@ export default function NetworkGraph() {
     : [];
   const selectedCs = selectedNode ? centralityScores.find(c => c.entityId === selectedNode.id) : null;
 
+  // "Collapse All" keeps the most-connected core visible instead of blanking the canvas.
+  const collapseIds = useMemo(() => {
+    if (centralityScores.length > 0) return centralityScores.slice(0, 8).map(c => c.entityId);
+    return entities.slice(0, 8).map(e => e.id);
+  }, [centralityScores, entities]);
+
   return (
     <div className="p-4 lg:p-6 h-full flex flex-col gap-3 max-w-screen-2xl mx-auto min-h-[600px]">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -558,7 +596,7 @@ export default function NetworkGraph() {
           </select>
           <button onClick={() => cyRef.current?.fit(undefined, 40)} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('resetZoom')}</button>
           <button onClick={() => setExpandedNodeIds(entities.map(e => e.id))} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('expandAll')}</button>
-          <button onClick={() => setExpandedNodeIds([])} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('collapseAll')}</button>
+          <button onClick={() => setExpandedNodeIds(collapseIds)} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('collapseAll')}</button>
           <button onClick={handleExport} className="text-sm px-3 py-1.5 bg-nexus-blue text-white rounded-md hover:bg-nexus-blue-light">{t('exportGraph')}</button>
         </div>
       </div>
@@ -621,11 +659,27 @@ export default function NetworkGraph() {
       <div className="flex-1 bg-white rounded-xl shadow-sm border border-nexus-border overflow-hidden relative min-h-[420px]">
         <div ref={containerRef} className="absolute inset-0" aria-label="Network graph visualization" role="img" />
 
+        {/* Empty state (no case graph loaded) */}
+        {entities.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center z-10">
+            <div className="bg-white/95 backdrop-blur rounded-xl border border-nexus-border p-6 text-center max-w-sm mx-4">
+              <p className="text-4xl mb-2" aria-hidden="true">🗺️</p>
+              <p className="font-semibold text-nexus-text mb-1">No case data loaded yet.</p>
+              <p className="text-sm text-nexus-text-secondary">
+                Run <code className="bg-nexus-surface px-1.5 py-0.5 rounded text-xs">supabase/seed_data.sql</code>{' '}
+                in the Supabase SQL editor, then reload.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Legend */}
         <div className="absolute top-3 left-3 bg-white/95 backdrop-blur rounded-lg border border-nexus-border p-3 text-xs space-y-1.5 z-10" role="complementary" aria-label="Graph legend">
           {Object.entries(entityTypeColors).map(([type, color]) => (
             <div key={type} className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
+              <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] text-white" style={{ backgroundColor: color }} aria-hidden="true">
+                {TYPE_ICON[type as EntityType]}
+              </span>
               <span className="capitalize">{type === 'org' ? t('organizations') : type === 'person' ? t('persons') : t(pluralKey(type))}</span>
             </div>
           ))}
@@ -652,11 +706,11 @@ export default function NetworkGraph() {
             <div className="flex items-start justify-between gap-2 mb-2">
               <div className="flex items-center gap-2 min-w-0">
                 <span
-                  className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-white text-base flex-shrink-0"
                   style={{ backgroundColor: entityTypeColors[selectedNode.type] }}
                   aria-hidden="true"
                 >
-                  {selectedNode.name.charAt(0)}
+                  {TYPE_ICON[selectedNode.type]}
                 </span>
                 <div className="min-w-0">
                   <p className="font-bold truncate">{selectedNode.name}</p>

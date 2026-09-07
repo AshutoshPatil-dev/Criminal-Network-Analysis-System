@@ -206,8 +206,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabaseConfigured]);
 
-  // Load the case graph and persisted history from Supabase (permissive read).
-  // When no project is configured, nothing is loaded — the app is DB-driven.
+  // Load the case graph and persisted history from Supabase. Re-fetches after
+  // sign-in flips the session so authenticated-role RLS policies apply.
   useEffect(() => {
     if (!supabaseConfigured) return;
     let cancelled = false;
@@ -221,7 +221,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         fetchFirDocuments(),
       ]);
       if (cancelled) return;
-      if (ent.length) setEntities(ent);
+      if (ent.length) {
+        setEntities(ent);
+        // Network graph starts fully expanded once the case graph loads.
+        setExpandedNodeIds(ent.map(e => e.id));
+      }
       if (rel.length) setRelationships(rel);
       if (evs.length) setCrimeEvents(evs);
       if (logs.length) setAuditLogs(logs);
@@ -230,7 +234,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabaseConfigured]);
+  }, [supabaseConfigured, user]);
 
   const signIn: AppState['signIn'] = async (email, password) => {
     if (!supabaseConfigured) return 'Supabase is not configured — check your .env and redeploy.';

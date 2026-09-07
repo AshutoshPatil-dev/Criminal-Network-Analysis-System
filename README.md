@@ -113,6 +113,7 @@ nexus/
 └─ supabase/
    ├─ schema.sql         # fresh-project schema (tables + RLS + storage bucket)
    ├─ seed_data.sql      # demo case graph (entities, relationships, FIRs)
+   ├─ harden_rls.sql     # production-grade RLS: authenticated-only, owner/admin-scoped
    └─ migration_profiles.sql  # run on an existing DB to switch officers → profiles
 ```
 
@@ -121,17 +122,27 @@ nexus/
 - This is a **demonstration** tool, not production police software. The case
   graph is fictional and loaded from `supabase/seed_data.sql`; reports, FIR
   documents and audit entries are written to the database at runtime.
-- The officer roster (`profiles`) is the only truly locked-down table: RLS +
-  `public.is_admin()` limit creates/updates/deletes to the signed-in admin, with
-  users able to read their own row. Auth-account creation uses client `signUp`
-  (safe without a service-role key); deleting a profile does **not** delete the
-  Auth user — remove it manually in Auth → Users.
-- Case data, reports, FIR documents, the audit log and the storage bucket are
-  **intentionally permissive** (`using (true)`) so signed-in officers can write
-  as the demo role. Before real deployment, restrict these to a designated role
-  and narrow with `auth.uid()` checks — currently the anon key can read/write
-  them. No offline/demo mode exists: without a configured Supabase project the
-  app only shows the sign-in gate.
+- The officer roster (`profiles`) is the only truly locked-down table in the base
+  schema: RLS + `public.is_admin()` limit creates/updates/deletes to the signed-in
+  admin, with users able to read their own row. Auth-account creation uses client
+  `signUp` (safe without a service-role key); deleting a profile does **not**
+  delete the Auth user — remove it manually in Auth → Users.
+- **Run `supabase/harden_rls.sql` for the hardened posture** (recommended even for
+  demos). It revokes the permissive anon policies so every case table, report,
+  audit log, FIR document and storage object is `authenticated`-role only;
+  reports/FIR documents are editable/deletable by their author or an admin, and
+  storage objects by their owner. The app re-fetches case data after sign-in, so
+  no code change is needed. Without hardening, the demo schema keeps anon
+  read/write for the case tables.
+- No offline/demo mode exists: without a configured Supabase project the app only
+  shows the sign-in gate; with hardening, signing out also blanks case data.
+- Operations posture: the frontend ships only the (public) anon key; the
+  service_role key and database password must never be placed in the client or
+  the repo — `.env` is gitignored and contains placeholders. `npm audit` reports
+  zero known vulnerabilities; dynamic HTML is never injected (no
+  `dangerouslySetInnerHTML`/`eval` — React escapes all user text).
+- Enable **"Confirm email"** in Supabase Auth settings for real deployments and
+  set a sensible JWT expiry; SSRF/over-quota concerns apply to any demo hosting.
 - OCR on uploaded FIR images runs client-side; attach-only evidence is checksummed
   (SHA-256) but not cryptographically bound. The Tesseract.js CDN dependency is
   version-pinned with SRI.
