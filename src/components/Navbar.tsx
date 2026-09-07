@@ -1,7 +1,20 @@
 import { useApp } from '../store';
 
 export default function Navbar() {
-  const { t, lang, setLang, searchQuery, setSearchQuery, searchResults, openProfile, user, setActiveScreen, signOut } = useApp();
+  const { t, lang, setLang, searchQuery, setSearchQuery, searchResults, openProfile, user, setActiveScreen, signOut, crimeEvents, firDocuments, selectFirDocument, openCrimeOnGraph } = useApp();
+
+  const q = searchQuery.trim().toLowerCase();
+  const firMatches = q.length > 0 ? crimeEvents.filter(c =>
+    c.firNumber.toLowerCase().includes(q) ||
+    (c.location ?? '').toLowerCase().includes(q)
+  ).slice(0, 5) : [];
+  const docMatches = q.length > 0 ? firDocuments.filter(d =>
+    d.firNumber.toLowerCase().includes(q) ||
+    d.ref.toLowerCase().includes(q) ||
+    (d.subjectName ?? '').toLowerCase().includes(q) ||
+    (d.incidentLocation ?? '').toLowerCase().includes(q)
+  ).slice(0, 5) : [];
+  const hasFirResults = firMatches.length > 0 || docMatches.length > 0;
 
   return (
     <nav className="bg-nexus-blue text-white shadow-lg sticky top-0 z-50" role="navigation" aria-label="Main navigation">
@@ -25,8 +38,8 @@ export default function Navbar() {
               onChange={e => setSearchQuery(e.target.value)}
               className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-sm text-white placeholder-blue-200 focus:bg-white/20 focus:border-white/40 focus:outline-none transition"
             />
-            {searchResults.length > 0 && searchQuery.length > 0 && (
-              <ul className="absolute top-full mt-1 w-full bg-white rounded-lg shadow-xl text-nexus-text max-h-64 overflow-y-auto z-50" role="listbox" aria-label="Search results">
+            {(searchResults.length > 0 || hasFirResults) && q.length > 0 && (
+              <ul className="absolute top-full mt-1 w-full bg-white rounded-lg shadow-xl text-nexus-text max-h-96 overflow-y-auto z-50" role="listbox" aria-label="Search results">
                 {searchResults.slice(0, 10).map(e => (
                   <li key={e.id}>
                     <button
@@ -43,6 +56,41 @@ export default function Navbar() {
                     </button>
                   </li>
                 ))}
+                {docMatches.map(d => (
+                  <li key={`doc-${d.ref}`}>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-nexus-surface flex items-center gap-2"
+                      onClick={() => {
+                        selectFirDocument(d.ref);
+                        setSearchQuery('');
+                      }}
+                      role="option"
+                    >
+                      <span className="text-nexus-risk-high font-bold" aria-hidden="true">📄</span>
+                      <span className="font-medium">{d.firNumber || d.ref}</span>
+                      <span className="text-nexus-text-secondary text-xs ml-auto capitalize">FIR · {d.subjectName || d.policeStation || d.ref}</span>
+                    </button>
+                  </li>
+                ))}
+                {firMatches.map(c => (
+                  <li key={`crime-${c.id}`}>
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-nexus-surface flex items-center gap-2"
+                      onClick={() => {
+                        openCrimeOnGraph(c.id);
+                        setSearchQuery('');
+                      }}
+                      role="option"
+                    >
+                      <span className="text-nexus-risk-high font-bold" aria-hidden="true">⚠</span>
+                      <span className="font-mono font-medium">{c.firNumber}</span>
+                      <span className="text-nexus-text-secondary text-xs ml-auto capitalize">{c.location} · {c.date}</span>
+                    </button>
+                  </li>
+                ))}
+                {searchResults.length === 0 && !hasFirResults && (
+                  <li className="px-4 py-2 text-sm text-nexus-text-secondary" role="option">No matches</li>
+                )}
               </ul>
             )}
           </div>

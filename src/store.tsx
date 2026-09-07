@@ -36,6 +36,10 @@ interface AppState {
   setActiveScreen: (s: Screen) => void;
   openProfile: (id: string) => void;
   goBack: () => void;
+  selectedFirRef: string | null;
+  setSelectedFirRef: (ref: string | null) => void;
+  selectFirDocument: (ref: string) => void;
+  openCrimeOnGraph: (crimeId: string) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   searchResults: Entity[];
@@ -77,6 +81,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const initial = parseHash();
   const [lang, setLang] = useState<'en' | 'hi'>('en');
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(initial.entityId);
+  const [selectedFirRef, setSelectedFirRef] = useState<string | null>(null);
   const [activeScreen, setActiveScreen] = useState<Screen>(initial.screen);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedNodeIds, setExpandedNodeIds] = useState<string[]>([]);
@@ -139,6 +144,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedEntityId(id);
     setActiveScreen('profile');
     window.location.hash = hashFor('profile', id);
+  };
+
+  // Global FIR search → open the saved FIR document in the FIR screen.
+  const selectFirDocument: AppState['selectFirDocument'] = (ref) => {
+    setSelectedFirRef(ref);
+    navigate('fir');
+  };
+
+  // Global FIR search → jump to the network graph timeline around that crime.
+  const openCrimeOnGraph: AppState['openCrimeOnGraph'] = (crimeId) => {
+    const ce = crimeEvents.find(c => c.id === crimeId);
+    if (ce) {
+      const d = new Date(`${ce.date}T00:00:00`);
+      const start = new Date(d.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+      setDateRange([start, ce.date]);
+    }
+    navigate('graph');
   };
 
   const goBack = () => {
@@ -223,8 +245,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       if (ent.length) {
         setEntities(ent);
-        // Network graph starts fully expanded once the case graph loads.
-        setExpandedNodeIds(ent.map(e => e.id));
+        // Network graph starts focused on the highest-risk core so the canvas
+        // is not cluttered; "Expand All" reveals the full network.
+        const focus = [...ent].sort((a, b) => b.riskScore - a.riskScore).slice(0, 12);
+        setExpandedNodeIds(focus.map(e => e.id));
       }
       if (rel.length) setRelationships(rel);
       if (evs.length) setCrimeEvents(evs);
@@ -355,6 +379,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectedEntityId, setSelectedEntityId,
       activeScreen, setActiveScreen: navigate,
       openProfile, goBack,
+      selectedFirRef, setSelectedFirRef, selectFirDocument, openCrimeOnGraph,
       searchQuery, setSearchQuery, searchResults,
       expandedNodeIds, setExpandedNodeIds,
       dateRange, setDateRange,

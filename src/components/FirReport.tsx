@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../store';
 import type { FirAttachment, FirDocument } from '../types';
 import { extractFirFromImage } from '../lib/firExtractor';
@@ -64,7 +64,7 @@ function FirField({ label, value, on, autoFilled, wide }: {
 }
 
 export default function FirReport() {
-  const { t, currentUser, user, officers, submittedReports, firDocuments, saveFirDocument, addAuditLog } = useApp();
+  const { t, currentUser, user, officers, submittedReports, firDocuments, saveFirDocument, addAuditLog, selectedFirRef, setSelectedFirRef } = useApp();
   const profile = user ?? { id: '', name: currentUser, rank: 'Officer', district: '—', state: '—', badgeNumber: '—', email: '', phone: '—', role: 'case-officer' as const, createdAt: '' };
   const [doc, setDoc] = useState<Omit<FirDocument, 'id' | 'createdAt' | 'createdBy'>>(() => emptyTemplate(profile));
   const [ocrInfo, setOcrInfo] = useState<{ provider: string; confidence: Record<string, number>; source: string } | null>(null);
@@ -163,6 +163,35 @@ export default function FirReport() {
 
   const attachmentRows = useMemo(() => doc.attachments, [doc.attachments]);
 
+  const openDoc = (ref: string) => {
+    if (!ref) {
+      setDoc(emptyTemplate(profile));
+      setOcrImage(null);
+      setOcrInfo(null);
+      setNotice(null);
+      return;
+    }
+    const saved = firDocuments.find(d => d.ref === ref);
+    if (!saved) {
+      setNotice(`No saved FIR document with ref "${ref}".`);
+      return;
+    }
+    const { id, createdAt, createdBy, ...rest } = saved;
+    setDoc(rest);
+    setOcrImage(null);
+    setOcrInfo(null);
+    setNotice(`Loaded saved FIR document ${saved.ref} (${saved.firNumber || 'no FIR number yet'}).`);
+  };
+
+  // Navigate into this screen from the global FIR search with a specific ref.
+  useEffect(() => {
+    if (selectedFirRef) {
+      openDoc(selectedFirRef);
+      setSelectedFirRef(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFirRef, firDocuments]);
+
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-6 no-print-zone">
       <div className="flex flex-wrap items-start justify-between gap-3 no-print">
@@ -171,6 +200,18 @@ export default function FirReport() {
           <p className="text-sm text-nexus-text-secondary mt-1">{t('firSubtitle')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <select
+            value={doc.ref || ''}
+            onChange={e => openDoc(e.target.value)}
+            className="px-3 py-2 rounded-lg border border-nexus-border text-sm font-medium bg-white hover:bg-nexus-surface transition"
+            aria-label="Load saved FIR document"
+            title="Load a saved FIR document"
+          >
+            <option value="">＋ New FIR document…</option>
+            {firDocuments.map(d => (
+              <option key={d.ref} value={d.ref}>{d.firNumber || d.ref}{d.subjectName ? ` — ${d.subjectName}` : ''}</option>
+            ))}
+          </select>
           <button onClick={loadLatestReport} className="px-3 py-2 rounded-lg border border-nexus-border text-sm font-medium hover:bg-nexus-surface transition">
             {t('fromSubmittedReport')}
           </button>

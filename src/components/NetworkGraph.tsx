@@ -88,9 +88,12 @@ function getCytoscapeElements(graph: GraphData, expandedIds: string[], dateRange
   const persistentTypes: RelationshipType[] = ['ownership', 'associate', 'co-accused'];
 
   const filteredRels = relationships.filter(r => {
+    if (expandedIds.length === 0) return false;
+    // Show edges only where BOTH endpoints are in the expanded set, keeping the
+    // default core view tight and uncluttered (Expand All widens it).
     const sourceExpanded = expandedIds.includes(r.source);
     const targetExpanded = expandedIds.includes(r.target);
-    if (!(sourceExpanded || targetExpanded)) return false;
+    if (!(sourceExpanded && targetExpanded)) return false;
     if (persistentTypes.includes(r.type)) return true;
     return r.timestamps.some(ts => {
       const d = new Date(ts);
@@ -187,6 +190,30 @@ export default function NetworkGraph() {
   const [colorBy, setColorBy] = useState<'type' | 'community' | 'risk'>('type');
   const [filterType, setFilterType] = useState<EntityType | 'all'>('all');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [entityQuery, setEntityQuery] = useState('');
+
+  const entityMatches = useMemo(() => {
+    const q = entityQuery.trim().toLowerCase();
+    if (!q) return [];
+    return entities
+      .filter(e => e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [entityQuery, entities]);
+
+  const focusEntity = useCallback((eid: string) => {
+    const adjacent = new Set<string>();
+    relationships.forEach(r => {
+      if (r.source === eid) adjacent.add(r.target);
+      if (r.target === eid) adjacent.add(r.source);
+    });
+    setExpandedNodeIds([eid, ...Array.from(adjacent)]);
+    setFilterType('all');
+    setEntityQuery('');
+    window.setTimeout(() => {
+      const node = cyRef.current?.getElementById(eid);
+      if (node && node.nonempty()) cyRef.current?.fit(node, 60);
+    }, 160);
+  }, [relationships, setExpandedNodeIds]);
 
   const bounds = useMemo(() => {
     const dates: number[] = [];
@@ -261,14 +288,14 @@ export default function NetworkGraph() {
         fit: true,
         padding: 60,
         nodeDimensionsIncludeLabels: true,
-        randomize: true,
-        nodeRepulsion: (node: NodeSingular) => 10000 + Math.pow(node.data('size') as number, 2.2),
-        idealEdgeLength: () => 190,
-        edgeElasticity: () => 12,
-        gravity: 0.4,
-        numIter: 1500,
+        randomize: false,
+        nodeRepulsion: (node: NodeSingular) => 8000 + Math.pow(node.data('size') as number, 2),
+        idealEdgeLength: () => 140,
+        edgeElasticity: () => 10,
+        gravity: 0.45,
+        numIter: 800,
         coolingFactor: 0.92,
-        componentSpacing: 160,
+        componentSpacing: 120,
       },
       style: [
         {
@@ -328,7 +355,7 @@ export default function NetworkGraph() {
             'curve-style': 'bezier',
             'target-arrow-color': '#CBD5E1',
             'target-arrow-shape': 'none',
-            'line-opacity': 0.55,
+            'line-opacity': 0.35,
             'z-index': 1,
           },
         },
@@ -594,6 +621,35 @@ export default function NetworkGraph() {
             <option value="location">{t('locations')}</option>
             <option value="org">{t('organizations')}</option>
           </select>
+          <div className="relative">
+            <input
+              type="search"
+              value={entityQuery}
+              onChange={e => setEntityQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && entityMatches.length > 0) focusEntity(entityMatches[0].id); }}
+              placeholder="Focus node…"
+              className="border border-nexus-border rounded-md px-2 py-1 text-sm bg-white w-36 focus:w-52 transition-all"
+              aria-label="Focus on an entity in the graph"
+            />
+            {entityQuery.trim().length > 0 && (
+              <ul className="absolute top-full mt-1 left-0 w-52 bg-white rounded-lg shadow-xl border border-nexus-border text-nexus-text max-h-64 overflow-y-auto z-20" role="listbox" aria-label="Entity focus results">
+                {entityMatches.length === 0 && <li className="px-3 py-2 text-xs text-nexus-text-secondary">No matches</li>}
+                {entityMatches.map(e => (
+                  <li key={e.id}>
+                    <button
+                      role="option"
+                      onClick={() => focusEntity(e.id)}
+                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-nexus-surface flex items-center gap-2"
+                    >
+                      <span className="text-xs" aria-hidden="true">{TYPE_ICON[e.type]}</span>
+                      <span className="font-medium truncate flex-1">{e.name}</span>
+                      <span className="text-nexus-text-secondary text-xs capitalize flex-shrink-0">{e.type}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <button onClick={() => cyRef.current?.fit(undefined, 40)} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('resetZoom')}</button>
           <button onClick={() => setExpandedNodeIds(entities.map(e => e.id))} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('expandAll')}</button>
           <button onClick={() => setExpandedNodeIds(collapseIds)} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('collapseAll')}</button>
