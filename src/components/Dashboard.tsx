@@ -1,9 +1,8 @@
 import { useApp } from '../store';
-import { entities, relationships, crimeEvents, centralityScores } from '../data/mockData';
 import { riskColor } from '../utils/theme';
 
 export default function Dashboard() {
-  const { t, setActiveScreen, openProfile } = useApp();
+  const { t, setActiveScreen, openProfile, entities, relationships, crimeEvents, centralityScores, anomalies } = useApp();
 
   const totalEntities = entities.length;
   const totalRelationships = relationships.length;
@@ -11,11 +10,18 @@ export default function Dashboard() {
   const topInfluencers = [...centralityScores]
     .sort((a, b) => b.pageRank - a.pageRank)
     .slice(0, 6)
-    .map(cs => ({
-      ...entities.find(e => e.id === cs.entityId)!,
-      pageRank: cs.pageRank,
-      degree: cs.degree,
-    }));
+    .map(cs => {
+      const e = entities.find(e => e.id === cs.entityId && e.type === 'person');
+      if (!e) return null;
+      return { ...e, pageRank: cs.pageRank, degree: cs.degree };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  const topFlags = anomalies
+    .slice()
+    .sort((a, b) => ({ high: 0, medium: 1, low: 2 }[a.severity] - { high: 0, medium: 1, low: 2 }[b.severity]))
+    .slice(0, 3)
+    .map(a => ({ icon: a.type === 'burner_phone' ? '🔥' : a.type === 'bridge_node' ? '🌉' : a.type === 'unusual_pattern' ? '📊' : '⚠', text: a.description, sev: a.severity }));
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-6">
@@ -27,7 +33,7 @@ export default function Dashboard() {
           { label: t('totalEntities'), value: totalEntities, color: 'text-nexus-blue' },
           { label: t('activeCases'), value: crimeEvents.length, color: 'text-nexus-risk-high' },
           { label: t('connections'), value: totalRelationships, color: 'text-nexus-text-secondary' },
-          { label: t('anomalies'), value: '8', color: 'text-nexus-risk-medium' },
+          { label: t('anomalies'), value: anomalies.length, color: 'text-nexus-risk-medium' },
         ].map(card => (
           <div key={card.label} className="bg-white rounded-xl shadow-sm border border-nexus-border p-5 hover:shadow-md transition">
             <p className="text-sm text-nexus-text-secondary font-medium">{card.label}</p>
@@ -49,6 +55,9 @@ export default function Dashboard() {
             </button>
           </div>
           <div className="divide-y divide-nexus-border">
+            {topInfluencers.length === 0 && (
+              <div className="px-5 py-8 text-center text-sm text-nexus-text-secondary">{t('noData')}</div>
+            )}
             {topInfluencers.map((person, i) => (
               <button
                 key={person.id}
@@ -87,7 +96,10 @@ export default function Dashboard() {
               <h2 className="font-semibold text-lg">{t('linkedFIRs')}</h2>
             </div>
             <div className="divide-y divide-nexus-border">
-              {crimeEvents.map(fir => (
+            {crimeEvents.length === 0 && (
+              <div className="px-5 py-8 text-center text-sm text-nexus-text-secondary">{t('noData')}</div>
+            )}
+            {crimeEvents.map(fir => (
                 <div key={fir.id} className="px-5 py-3">
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-sm font-semibold text-nexus-blue">{fir.firNumber}</span>
@@ -107,11 +119,10 @@ export default function Dashboard() {
               <h2 className="font-semibold text-lg">{t('recentFlagged')}</h2>
             </div>
             <div className="p-4 space-y-3">
-              {[
-                { icon: '⚠', text: 'Unknown phone (ph6) contacted Rajesh Singh 22x before FIR', sev: 'high' },
-                { icon: '🔥', text: 'Burner phone ph11 — active 5 days then silent', sev: 'high' },
-                { icon: '🌉', text: 'Deepak Mahto bridges Patna ↔ Kolkata networks', sev: 'medium' },
-              ].map((flag, i) => (
+            {topFlags.length === 0 && (
+              <p className="text-sm text-nexus-text-secondary">{t('noData')}</p>
+            )}
+            {topFlags.map((flag, i) => (
                 <div key={i} className={`flex items-start gap-2 p-2.5 rounded-lg text-sm ${flag.sev === 'high' ? 'bg-red-50' : 'bg-amber-50'}`}>
                   <span aria-hidden="true">{flag.icon}</span>
                   <p className={`text-xs leading-relaxed ${flag.sev === 'high' ? 'text-nexus-risk-high' : 'text-nexus-risk-medium'}`}>{flag.text}</p>

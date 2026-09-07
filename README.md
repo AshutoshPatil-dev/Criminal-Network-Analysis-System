@@ -106,20 +106,21 @@ nexus/
 ├─ src/
 │  ├─ components/        # screens & UI (Dashboard, NetworkGraph, ReportEntry,
 │  │                     #  FirReport, Officers, Login, AuditLogs, …)
-│  ├─ lib/               # supabase client, aiAnalyzer, firExtractor (OCR)
-│  ├─ data/mockData.ts   # demo case entities + audit seeds
+│  ├─ lib/               # supabase client, aiAnalyzer, firExtractor (OCR), graph
 │  ├─ store.tsx          # app state, auth session, officers/FIR CRUD, routing
 │  ├─ i18n.ts            # English / Hindi strings
 │  └─ types.ts           # shared types
 └─ supabase/
    ├─ schema.sql         # fresh-project schema (tables + RLS + storage bucket)
+   ├─ seed_data.sql      # demo case graph (entities, relationships, FIRs)
    └─ migration_profiles.sql  # run on an existing DB to switch officers → profiles
 ```
 
 ## Security notes
 
-- This is a **demonstration** tool, not production police software. Data shown
-  is fictional and seeded locally.
+- This is a **demonstration** tool, not production police software. The case
+  graph is fictional and loaded from `supabase/seed_data.sql`; reports, FIR
+  documents and audit entries are written to the database at runtime.
 - The officer roster (`profiles`) is the only truly locked-down table: RLS +
   `public.is_admin()` limit creates/updates/deletes to the signed-in admin, with
   users able to read their own row. Auth-account creation uses client `signUp`

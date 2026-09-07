@@ -5,7 +5,6 @@ import type { TranslationKey } from '../i18n';
 import { uploadCdrFile } from '../lib/supabase';
 import { checksumFile } from '../lib/checksum';
 import { runLinkAnalysis } from '../lib/aiAnalyzer';
-import { entities, relationships, crimeEvents, centralityScores } from '../data/mockData';
 
 type KindLabelKey =
   | 'detailPhone' | 'detailCallRecords' | 'detailAddress' | 'detailVehicle' | 'detailEmail'
@@ -64,7 +63,7 @@ const TAG_STYLE: Record<TagKey, string> = {
 const pad = (n: number) => String(n).padStart(3, '0');
 
 export default function ReportEntry() {
-  const { t, addAuditLog, registerReport, submittedReports, pushFindingsToast } = useApp();
+  const { t, addAuditLog, registerReport, submittedReports, pushFindingsToast, entities, relationships, crimeEvents, centralityScores } = useApp();
 
   const [name, setName] = useState('');
   const [firNumber, setFirNumber] = useState('');

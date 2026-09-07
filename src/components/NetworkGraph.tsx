@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import cytoscape, { type Core, type NodeSingular, type EdgeSingular } from 'cytoscape';
 import { useApp } from '../store';
-import { entities, relationships, crimeEvents, communities, centralityScores } from '../data/mockData';
 import { entityTypeColors, riskColor } from '../utils/theme';
-import type { Entity, EntityType, RelationshipType } from '../types';
+import type { Entity, EntityType, RelationshipType, Relationship, CrimeEvent, Community } from '../types';
 import type { TranslationKey } from '../i18n';
 
 const relTypeStyles: Record<RelationshipType, { color: string; dash?: string }> = {
@@ -17,9 +16,6 @@ const relTypeStyles: Record<RelationshipType, { color: string; dash?: string }> 
 
 const communityColors = ['#0B3D91', '#16A34A', '#F59E0B', '#DC2626'];
 
-const DATE_MIN = '2026-01-01';
-const DATE_MAX = '2026-04-30';
-
 interface MergedRel {
   source: string;
   target: string;
@@ -30,7 +26,7 @@ interface MergedRel {
 }
 
 // Merge parallel edges between the same pair into a single edge to declutter.
-function aggregateRelationships(rels: typeof relationships): MergedRel[] {
+function aggregateRelationships(rels: Relationship[]): MergedRel[] {
   const map = new Map<string, MergedRel>();
   for (const r of rels) {
     const key = [r.source, r.target].sort().join('⟷');
@@ -58,7 +54,15 @@ const dominantType = (relTypes: RelationshipType[]): RelationshipType =>
   ['call', 'meeting', 'transaction', 'associate', 'co-accused', 'ownership']
     .find(t => relTypes.includes(t as RelationshipType)) as RelationshipType;
 
-function getCytoscapeElements(expandedIds: string[], dateRange: [string, string]) {
+interface GraphData {
+  entities: Entity[];
+  relationships: Relationship[];
+  crimeEvents: CrimeEvent[];
+  communities: Community[];
+}
+
+function getCytoscapeElements(graph: GraphData, expandedIds: string[], dateRange: [string, string]) {
+  const { entities, relationships, crimeEvents, communities } = graph;
   const [start, end] = dateRange;
   const startDate = new Date(start);
   const endDate = new Date(end);
@@ -158,11 +162,38 @@ export default function NetworkGraph() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const layoutRef = useRef<cytoscape.Layouts | null>(null);
-  const { t, expandedNodeIds, setExpandedNodeIds, dateRange, setDateRange, openProfile, setSelectedEntityId } = useApp();
+  const { t, expandedNodeIds, setExpandedNodeIds, dateRange, setDateRange, openProfile, setSelectedEntityId, entities, relationships, crimeEvents, communities, centralityScores } = useApp();
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const [colorBy, setColorBy] = useState<'type' | 'community' | 'risk'>('type');
   const [filterType, setFilterType] = useState<EntityType | 'all'>('all');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  const bounds = useMemo(() => {
+    const dates: number[] = [];
+    for (const r of relationships) for (const ts of r.timestamps) {
+      const t = new Date(ts).getTime();
+      if (!Number.isNaN(t)) dates.push(t);
+    }
+    for (const ce of crimeEvents) {
+      const t = new Date(ce.date).getTime();
+      if (!Number.isNaN(t)) dates.push(t);
+    }
+    if (dates.length === 0) return { min: new Date('2000-01-01'), max: new Date('2099-12-31') };
+    return { min: new Date(Math.min(...dates)), max: new Date(Math.max(...dates)) };
+  }, [relationships, crimeEvents]);
+
+  const pct = (dateStr: string) => {
+    const span = bounds.max.getTime() - bounds.min.getTime();
+    if (span <= 0) return 0;
+    return ((new Date(dateStr).getTime() - bounds.min.getTime()) / span) * 100;
+  };
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const dayOffset = (days: number) => iso(new Date(bounds.max.getTime() - days * 86400000));
+  const TIMELINE_PRESETS = [
+    { label: 'Full', range: [iso(bounds.min), iso(bounds.max)] as [string, string] },
+    { label: t('last90Days'), range: [dayOffset(90), iso(bounds.max)] as [string, string] },
+    { label: t('last30Days'), range: [dayOffset(30), iso(bounds.max)] as [string, string] },
+  ];
 
   const handleExport = () => {
     const blob = new Blob([JSON.stringify({ entities, relationships, crimeEvents }, null, 2)], { type: 'application/json' });
@@ -197,7 +228,7 @@ export default function NetworkGraph() {
       el.style.height = `${py}px`;
     }
 
-    const elements = getCytoscapeElements(expandedNodeIds, dateRange);
+    const elements = getCytoscapeElements({ entities, relationships, crimeEvents, communities }, expandedNodeIds, dateRange);
 
     const cy = cytoscape({
       container: el,
@@ -443,7 +474,7 @@ export default function NetworkGraph() {
     cyRef.current = cy;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__nexusCy = cy;
-  }, [expandedNodeIds, dateRange, colorBy, filterType, t, openProfile, setSelectedEntityId, setExpandedNodeIds, toggleNode]);
+  }, [expandedNodeIds, dateRange, colorBy, filterType, t, openProfile, setSelectedEntityId, setExpandedNodeIds, toggleNode, entities, relationships, crimeEvents, communities]);
 
   useEffect(() => {
     buildGraph();
@@ -527,7 +558,7 @@ export default function NetworkGraph() {
           </select>
           <button onClick={() => cyRef.current?.fit(undefined, 40)} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('resetZoom')}</button>
           <button onClick={() => setExpandedNodeIds(entities.map(e => e.id))} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('expandAll')}</button>
-          <button onClick={() => setExpandedNodeIds(['p1', 'p2', 'p5', 'p12', 'ph6', 'ph11'])} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('collapseAll')}</button>
+          <button onClick={() => setExpandedNodeIds([])} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('collapseAll')}</button>
           <button onClick={handleExport} className="text-sm px-3 py-1.5 bg-nexus-blue text-white rounded-md hover:bg-nexus-blue-light">{t('exportGraph')}</button>
         </div>
       </div>
@@ -537,15 +568,10 @@ export default function NetworkGraph() {
         <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
           <label className="text-sm font-medium text-nexus-text-secondary">{t('timeline')}</label>
           <div className="flex gap-1.5" role="group" aria-label="Timeline presets">
-            {[
-              { label: 'Full', range: [DATE_MIN, DATE_MAX] },
-              { label: 'Feb', range: ['2026-02-01', '2026-02-28'] },
-              { label: 'Pre-FIR #2026/0417', range: ['2026-03-19', '2026-03-22'] },
-              { label: 'Mar', range: ['2026-03-01', '2026-03-31'] },
-            ].map(p => (
+            {TIMELINE_PRESETS.map(p => (
               <button
                 key={p.label}
-                onClick={() => setDateRange(p.range as [string, string])}
+                onClick={() => setDateRange(p.range)}
                 className={`text-xs px-2 py-1 rounded-md border transition ${dateRange[0] === p.range[0] && dateRange[1] === p.range[1] ? 'bg-nexus-blue text-white border-nexus-blue' : 'border-nexus-border text-nexus-text-secondary hover:bg-nexus-surface'}`}
               >
                 {p.label}
@@ -577,7 +603,7 @@ export default function NetworkGraph() {
                 style={{ left: `${pct(ce.date)}%` }}
                 title={`FIR ${ce.firNumber} — ${ce.date}`}
                 aria-label={`Focus on crime FIR ${ce.firNumber} (${ce.date})`}
-                onClick={() => setDateRange(['2026-03-19', ce.date])}
+                onClick={() => setDateRange([iso(new Date(new Date(ce.date).getTime() - 7 * 86400000)), ce.date])}
               />
             ))}
           </div>
@@ -734,9 +760,6 @@ export default function NetworkGraph() {
     </div>
   );
 }
-
-const pct = (dateStr: string) =>
-  ((new Date(dateStr).getTime() - new Date(DATE_MIN).getTime()) / (new Date(DATE_MAX).getTime() - new Date(DATE_MIN).getTime())) * 100;
 
 function pluralKey(type: string) {
   switch (type) {

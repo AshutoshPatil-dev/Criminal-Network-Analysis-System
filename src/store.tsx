@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect, useState, type ReactNode, type Dispatch, type SetStateAction } from 'react';
-import type { Entity, AuditLogEntry, SubmittedReport, Officer, FirDocument } from './types';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode, type Dispatch, type SetStateAction } from 'react';
+import type { Entity, AuditLogEntry, SubmittedReport, Officer, FirDocument, Relationship, CrimeEvent, CentralityScore, Community, Anomaly } from './types';
 import type { TranslationKey } from './i18n';
 import { translations } from './i18n';
-import { entities as allEntities, auditLogSeeds } from './data/mockData';
-import { persistAuditLog, persistReport, updateOfficerRow, deleteOfficerRow, persistFirDocument, createOfficerAccount, fetchProfiles, fetchMyProfile, signInWithPassword, signOutSession, getSessionUser, supabaseConfigured } from './lib/supabase';
+import { deriveGraph } from './lib/graph';
+import { persistAuditLog, persistReport, updateOfficerRow, deleteOfficerRow, persistFirDocument, createOfficerAccount, fetchProfiles, fetchMyProfile, signInWithPassword, signOutSession, getSessionUser, supabaseConfigured, fetchEntities, fetchRelationships, fetchCrimeEvents, fetchAuditLogs, fetchReports, fetchFirDocuments } from './lib/supabase';
 
 export type Screen = 'dashboard' | 'graph' | 'profile' | 'patterns' | 'report' | 'logs' | 'analysis' | 'fir' | 'officers';
 
@@ -45,6 +45,12 @@ interface AppState {
   setDateRange: Dispatch<SetStateAction<[string, string]>>;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (c: boolean) => void;
+  entities: Entity[];
+  relationships: Relationship[];
+  crimeEvents: CrimeEvent[];
+  centralityScores: CentralityScore[];
+  communities: Community[];
+  anomalies: Anomaly[];
   user: Officer | null;
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => void;
@@ -73,10 +79,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(initial.entityId);
   const [activeScreen, setActiveScreen] = useState<Screen>(initial.screen);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedNodeIds, setExpandedNodeIds] = useState<string[]>(['p1', 'p2', 'p5', 'p12', 'ph6', 'ph11']);
-  const [dateRange, setDateRange] = useState<[string, string]>(['2026-01-01', '2026-04-30']);
+  const [expandedNodeIds, setExpandedNodeIds] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<[string, string]>(['2000-01-01', '2099-12-31']);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(auditLogSeeds);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [relationships, setRelationships] = useState<Relationship[]>([]);
+  const [crimeEvents, setCrimeEvents] = useState<CrimeEvent[]>([]);
   const [submittedReports, setSubmittedReports] = useState<SubmittedReport[]>([]);
   const [findingsToast, setFindingsToast] = useState<AppState['findingsToast']>(null);
   const [officers, setOfficers] = useState<Officer[]>([]);
@@ -112,12 +121,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const searchResults = searchQuery.length > 0
-    ? allEntities.filter(e =>
+    ? entities.filter(e =>
         e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         e.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
         Object.values(e.attributes).some(v => v.toLowerCase().includes(searchQuery.toLowerCase()))
       )
     : [];
+
+  const derived = useMemo(() => deriveGraph({ entities, relationships, crimeEvents }), [entities, relationships, crimeEvents]);
 
   const navigate = (s: Screen) => {
     setActiveScreen(s);
@@ -190,6 +201,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(SESSION_KEY, JSON.stringify({ ...profile, updatedAt: new Date().toISOString() }));
       const rows = await fetchProfiles();
       if (!cancelled && rows.length) setOfficers(rows);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabaseConfigured]);
+
+  // Load the case graph and persisted history from Supabase (permissive read).
+  // When no project is configured, nothing is loaded — the app is DB-driven.
+  useEffect(() => {
+    if (!supabaseConfigured) return;
+    let cancelled = false;
+    void (async () => {
+      const [ent, rel, evs, logs, reports, firs] = await Promise.all([
+        fetchEntities(),
+        fetchRelationships(),
+        fetchCrimeEvents(),
+        fetchAuditLogs(),
+        fetchReports(),
+        fetchFirDocuments(),
+      ]);
+      if (cancelled) return;
+      if (ent.length) setEntities(ent);
+      if (rel.length) setRelationships(rel);
+      if (evs.length) setCrimeEvents(evs);
+      if (logs.length) setAuditLogs(logs);
+      if (reports.length) setSubmittedReports(reports);
+      if (firs.length) setFirDocuments(firs);
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -318,6 +355,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       expandedNodeIds, setExpandedNodeIds,
       dateRange, setDateRange,
       sidebarCollapsed, setSidebarCollapsed,
+      entities, relationships, crimeEvents,
+      centralityScores: derived.centralityScores,
+      communities: derived.communities,
+      anomalies: derived.anomalies,
       user, signIn, signOut,
       currentUser: actorName(),
       officers, refreshOfficers, addOfficer, updateOfficer, removeOfficer,

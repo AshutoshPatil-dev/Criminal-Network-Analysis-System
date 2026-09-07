@@ -1,10 +1,11 @@
 import { useApp } from '../store';
-import { centralityScores, communities, anomalies, entities } from '../data/mockData';
 import { riskColor, entityTypeColors } from '../utils/theme';
-import type { Anomaly } from '../types';
+import type { Anomaly, Entity } from '../types';
+
+const COMMUNITY_COLORS = ['#0B3D91', '#16A34A', '#F59E0B', '#DC2626'];
 
 export default function PatternAnomaly() {
-  const { t, openProfile } = useApp();
+  const { t, openProfile, centralityScores, communities, anomalies, entities } = useApp();
 
   const sortedByCentrality = [...centralityScores].sort((a, b) => b.pageRank - a.pageRank);
 
@@ -52,7 +53,7 @@ export default function PatternAnomaly() {
               <tbody className="divide-y divide-nexus-border">
                 {sortedByCentrality.map((cs, i) => {
                   const entity = entities.find(e => e.id === cs.entityId);
-                  if (!entity) return null;
+                  if (!entity || entity.type !== 'person') return null;
                   return (
                     <tr
                       key={cs.entityId}
@@ -111,11 +112,12 @@ export default function PatternAnomaly() {
           </div>
           <div className="p-4 space-y-4">
             {communities.map((comm, i) => {
-              const members = comm.members.filter(m => m.startsWith('p')).map(m => entities.find(e => e.id === m)).filter(Boolean);
-              return (
-                <div key={comm.id} className="p-4 rounded-xl border-2 border-dashed" style={{ borderColor: ['#0B3D91', '#16A34A', '#F59E0B', '#DC2626'][i] }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: ['#0B3D91', '#16A34A', '#F59E0B', '#DC2626'][i] }}>
+      const members = comm.members.map(m => entities.find(e => e.id === m)).filter((x): x is Entity => !!x).filter(m => m.type === 'person');
+      const color = COMMUNITY_COLORS[i % COMMUNITY_COLORS.length];
+      return (
+        <div key={comm.id} className="p-4 rounded-xl border-2 border-dashed" style={{ borderColor: color }}>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: color }}>
                       {i}
                     </span>
                     <span className="font-semibold text-sm">{t('community')} #{i}</span>

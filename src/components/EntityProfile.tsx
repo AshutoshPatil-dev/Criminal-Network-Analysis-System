@@ -1,9 +1,8 @@
 import { useApp } from '../store';
-import { entities, relationships, crimeEvents, centralityScores } from '../data/mockData';
 import { entityTypeColors, riskColor, riskLabelKey } from '../utils/theme';
 
 export default function EntityProfile() {
-  const { t, selectedEntityId, openProfile, goBack } = useApp();
+  const { t, selectedEntityId, openProfile, goBack, entities, relationships, crimeEvents, centralityScores } = useApp();
 
   const entity = selectedEntityId ? entities.find(e => e.id === selectedEntityId) : null;
 

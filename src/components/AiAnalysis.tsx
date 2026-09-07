@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../store';
-import { entities, relationships, crimeEvents, centralityScores } from '../data/mockData';
 import { runLinkAnalysis, type AnalysisFinding, type LinkAnalysisResult } from '../lib/aiAnalyzer';
 import { riskColor } from '../utils/theme';
 
@@ -36,7 +35,7 @@ const SCAN_STEPS = [
 ];
 
 export default function AiAnalysis() {
-  const { t, addAuditLog, submittedReports, openProfile } = useApp();
+  const { t, addAuditLog, submittedReports, openProfile, entities, relationships, crimeEvents, centralityScores } = useApp();
   const [scanning, setScanning] = useState(true);
   const [step, setStep] = useState(0);
   const [result, setResult] = useState<LinkAnalysisResult | null>(null);
@@ -59,7 +58,7 @@ export default function AiAnalysis() {
     }, 1500);
   };
 
-  useEffect(() => { run(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { run(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [entities.length, relationships.length, crimeEvents.length, submittedReports.length]);
 
   useEffect(() => {
     if (!scanning) return;

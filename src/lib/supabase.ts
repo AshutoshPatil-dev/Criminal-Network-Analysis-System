@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { Officer } from '../types';
+import type { Officer, Entity, Relationship, CrimeEvent, AuditLogEntry, SubmittedReport, ReportDetail, FirDocument, FirAttachment } from '../types';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -261,4 +261,209 @@ export const persistFirDocument = async (d: {
   } catch {
     // offline fallback
   }
+};
+
+// ---------------------------------------------------------------------------
+// Case graph + history reads (public/permissive read; source of truth is the
+// database when a project is configured).
+// ---------------------------------------------------------------------------
+
+type EntityRow = {
+  id: string;
+  type: string;
+  name: string;
+  attributes: Record<string, string> | null;
+  risk_score: number;
+};
+
+type RelationshipRow = {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  counts: number;
+  timestamps: unknown;
+  linked_crime_event_id: string | null;
+};
+
+type CrimeEventRow = {
+  id: string;
+  fir_number: string;
+  incident_date: string;
+  location: string | null;
+  involved_entity_ids: unknown;
+};
+
+export const fetchEntities = async (): Promise<Entity[]> => {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('entities').select('id, type, name, attributes, risk_score');
+  if (error || !data) return [];
+  return (data as EntityRow[]).map(r => ({
+    id: r.id,
+    type: r.type as Entity['type'],
+    name: r.name,
+    attributes: r.attributes ?? {},
+    riskScore: Number(r.risk_score) || 0,
+  }));
+};
+
+export const fetchRelationships = async (): Promise<Relationship[]> => {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('relationships').select('source, target, type, counts, timestamps, linked_crime_event_id');
+  if (error || !data) return [];
+  return (data as RelationshipRow[]).map(r => ({
+    source: r.source,
+    target: r.target,
+    type: r.type as Relationship['type'],
+    count: Number(r.counts) || 1,
+    timestamps: Array.isArray(r.timestamps) ? (r.timestamps as string[]).map(String) : [],
+    linkedCrimeEventId: r.linked_crime_event_id ?? undefined,
+  }));
+};
+
+export const fetchCrimeEvents = async (): Promise<CrimeEvent[]> => {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('crime_events').select('id, fir_number, incident_date, location, involved_entity_ids');
+  if (error || !data) return [];
+  return (data as CrimeEventRow[]).map(r => ({
+    id: r.id,
+    firNumber: r.fir_number,
+    date: r.incident_date,
+    location: r.location ?? '—',
+    involvedEntityIds: Array.isArray(r.involved_entity_ids) ? (r.involved_entity_ids as string[]) : [],
+  }));
+};
+
+type AuditRow = {
+  id: string;
+  actor_name: string | null;
+  action: string;
+  level: string;
+  summary: string;
+  target: string | null;
+  created_at: string;
+};
+
+export const fetchAuditLogs = async (): Promise<AuditLogEntry[]> => {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('audit_logs')
+    .select('id, actor_name, action, level, summary, target, created_at')
+    .order('created_at', { ascending: false });
+  if (error || !data) return [];
+  return (data as AuditRow[]).map(r => ({
+    id: r.id,
+    timestamp: r.created_at,
+    actor: r.actor_name ?? 'System',
+    action: r.action as AuditLogEntry['action'],
+    level: r.level === 'warn' || r.level === 'critical' ? r.level : 'info',
+    summary: r.summary,
+    target: r.target ?? undefined,
+  }));
+};
+
+type ReportRow = {
+  id: string;
+  ref: string;
+  fir_number: string | null;
+  subject_name: string;
+  incident_location: string | null;
+  details_jsonb: unknown;
+  submitted_by: string | null;
+  created_at: string;
+};
+
+export const fetchReports = async (): Promise<SubmittedReport[]> => {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('reports')
+    .select('id, ref, fir_number, subject_name, incident_location, details_jsonb, submitted_by, created_at')
+    .order('created_at', { ascending: false });
+  if (error || !data) return [];
+  return (data as ReportRow[]).map(r => ({
+    id: r.ref ?? r.id,
+    firNumber: r.fir_number ?? r.ref ?? '',
+    incidentLocation: r.incident_location ?? undefined,
+    subjectName: r.subject_name,
+    detailCount: Array.isArray(r.details_jsonb) ? (r.details_jsonb as unknown[]).length : 0,
+    details: Array.isArray(r.details_jsonb) ? ((r.details_jsonb as ReportDetail[]).map(d => ({
+      id: d.id ?? crypto.randomUUID(),
+      kind: d.kind,
+      value: d.value,
+      meta: d.meta,
+      note: d.note,
+      tags: d.tags ?? [],
+      createdAt: d.createdAt ?? r.created_at,
+    }))) : [],
+    submittedAt: r.created_at,
+    submittedBy: r.submitted_by ?? 'System',
+  }));
+};
+
+type FirRow = {
+  id: string;
+  ref: string;
+  fir_number: string | null;
+  police_station: string | null;
+  district: string | null;
+  state: string | null;
+  incident_date: string | null;
+  incident_time: string | null;
+  sections_law: string | null;
+  complainant_name: string | null;
+  complainant_age: string | null;
+  complainant_father: string | null;
+  complainant_address: string | null;
+  complainant_phone: string | null;
+  subject_name: string | null;
+  subject_aliases: string | null;
+  accused_details: string | null;
+  incident_location: string | null;
+  incident_description: string | null;
+  evidence_summary: string | null;
+  io_name: string | null;
+  io_rank: string | null;
+  report_ref: unknown;
+  ocr_source: string | null;
+  attachments: unknown;
+  created_by: string | null;
+  created_at: string;
+};
+
+export const fetchFirDocuments = async (): Promise<FirDocument[]> => {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('fir_documents')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error || !data) return [];
+  return (data as FirRow[]).map(r => ({
+    id: r.id,
+    ref: r.ref,
+    firNumber: r.fir_number ?? '',
+    policeStation: r.police_station ?? '',
+    district: r.district ?? '',
+    state: r.state ?? '',
+    incidentDate: r.incident_date ?? '',
+    incidentTime: r.incident_time ?? '',
+    sectionsLaw: r.sections_law ?? '',
+    complainantName: r.complainant_name ?? '',
+    complainantAge: r.complainant_age ?? '',
+    complainantFather: r.complainant_father ?? '',
+    complainantAddress: r.complainant_address ?? '',
+    complainantPhone: r.complainant_phone ?? '',
+    subjectName: r.subject_name ?? '',
+    subjectAliases: r.subject_aliases ?? '',
+    accusedDetails: r.accused_details ?? '',
+    incidentLocation: r.incident_location ?? '',
+    incidentDescription: r.incident_description ?? '',
+    evidenceSummary: r.evidence_summary ?? '',
+    ioName: r.io_name ?? '',
+    ioRank: r.io_rank ?? '',
+    reportRef: Array.isArray(r.report_ref) ? (r.report_ref as string[])[0] ?? undefined : (r.report_ref as string | null) ?? undefined,
+    ocrSource: r.ocr_source ?? undefined,
+    attachments: (r.attachments as FirAttachment[]) ?? [],
+    createdAt: r.created_at,
+    createdBy: r.created_by ?? 'System',
+  }));
 };
