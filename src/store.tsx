@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode, type Dispatch, type SetStateAction } from 'react';
 import type { Entity, AuditLogEntry, SubmittedReport, Officer, FirDocument, Relationship, CrimeEvent, CentralityScore, Community, Anomaly } from './types';
-import type { TranslationKey } from './i18n';
+import type { TranslationKey, LangCode } from './i18n';
 import { translations } from './i18n';
 import { deriveGraph } from './lib/graph';
 import { persistAuditLog, persistReport, updateOfficerRow, deleteOfficerRow, persistFirDocument, createOfficerAccount, fetchProfiles, fetchMyProfile, signInWithPassword, signOutSession, getSessionUser, supabaseConfigured, fetchEntities, fetchRelationships, fetchCrimeEvents, fetchAuditLogs, fetchReports, fetchFirDocuments } from './lib/supabase';
@@ -27,9 +27,9 @@ export const DEFAULT_OFFICER = 'System';
 const SESSION_KEY = 'nexus:session';
 
 interface AppState {
-  lang: 'en' | 'hi';
+  lang: LangCode;
   t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
-  setLang: (l: 'en' | 'hi') => void;
+  setLang: (l: LangCode) => void;
   selectedEntityId: string | null;
   setSelectedEntityId: (id: string | null) => void;
   activeScreen: Screen;
@@ -79,7 +79,10 @@ const AppContext = createContext<AppState | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const initial = parseHash();
-  const [lang, setLang] = useState<'en' | 'hi'>('en');
+  const [lang, setLang] = useState<LangCode>(() => {
+    const saved = typeof localStorage === 'undefined' ? null : localStorage.getItem('nexus_lang');
+    return saved && saved in translations ? saved as LangCode : 'en';
+  });
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(initial.entityId);
   const [selectedFirRef, setSelectedFirRef] = useState<string | null>(null);
   const [activeScreen, setActiveScreen] = useState<Screen>(initial.screen);
@@ -116,13 +119,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const t = (key: TranslationKey, vars?: Record<string, string | number>): string => {
-    let str: string = translations[lang][key];
+    let str: string = (translations[lang] as Record<string, string | undefined>)[key] ?? translations.en[key] ?? key;
     if (vars) {
       for (const k of Object.keys(vars)) {
         str = str.replace(new RegExp(`\\{${k}\\}`, 'g'), String(vars[k]));
       }
     }
     return str;
+  };
+
+  const changeLang = (next: LangCode) => {
+    setLang(next);
+    try { localStorage.setItem('nexus_lang', next); } catch { /* ignore */ }
   };
 
   const searchResults = searchQuery.length > 0
@@ -385,7 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      lang, setLang, t,
+      lang, setLang: changeLang, t,
       selectedEntityId, setSelectedEntityId,
       activeScreen, setActiveScreen: navigate,
       openProfile, goBack,
