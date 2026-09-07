@@ -191,6 +191,7 @@ export default function NetworkGraph() {
   const [filterType, setFilterType] = useState<EntityType | 'all'>('all');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [entityQuery, setEntityQuery] = useState('');
+  const [timelineOpen, setTimelineOpen] = useState(true);
 
   const entityMatches = useMemo(() => {
     const q = entityQuery.trim().toLowerCase();
@@ -232,7 +233,10 @@ export default function NetworkGraph() {
   const pct = (dateStr: string) => {
     const span = bounds.max.getTime() - bounds.min.getTime();
     if (span <= 0) return 0;
-    return ((new Date(dateStr).getTime() - bounds.min.getTime()) / span) * 100;
+    const raw = ((new Date(dateStr).getTime() - bounds.min.getTime()) / span) * 100;
+    // Clamp to the track so a date outside the data bounds can never push the
+    // range bar or the FIR markers out of the timeline container.
+    return Math.min(100, Math.max(0, raw));
   };
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   const dayOffset = (days: number) => iso(new Date(bounds.max.getTime() - days * 86400000));
@@ -284,18 +288,18 @@ export default function NetworkGraph() {
       layout: {
         name: 'cose',
         animate: true,
-        animationDuration: 700,
+        animationDuration: 500,
         fit: true,
-        padding: 60,
+        padding: 90,
         nodeDimensionsIncludeLabels: true,
         randomize: false,
-        nodeRepulsion: (node: NodeSingular) => 8000 + Math.pow(node.data('size') as number, 2),
-        idealEdgeLength: () => 140,
-        edgeElasticity: () => 10,
-        gravity: 0.45,
-        numIter: 800,
-        coolingFactor: 0.92,
-        componentSpacing: 120,
+        nodeRepulsion: (node: NodeSingular) => 26000 + Math.pow(node.data('size') as number, 2.4),
+        idealEdgeLength: () => 240,
+        edgeElasticity: () => 24,
+        gravity: 0.12,
+        numIter: 1400,
+        coolingFactor: 0.95,
+        componentSpacing: 260,
       },
       style: [
         {
@@ -320,7 +324,7 @@ export default function NetworkGraph() {
             width: 'data(size)',
             height: 'data(size)',
             'border-width': 2,
-            'border-color': (ele: NodeSingular) => (ele.data('riskScore') as number) >= 70 ? 'rgba(220,38,38,0.55)' : 'rgba(255,255,255,0.9)',
+            'border-color': (ele: NodeSingular) => (ele.data('riskScore') as number) >= 70 ? 'rgba(220,38,38,0.35)' : 'rgba(255,255,255,0.9)',
             'overlay-padding': '5px',
             'overlay-opacity': 0.12,
             'z-index': 10,
@@ -362,6 +366,10 @@ export default function NetworkGraph() {
         {
           selector: 'edge[isBeforeCrime = true]',
           style: { 'line-color': '#DC2626', 'line-opacity': 0.95, 'z-index': 20 },
+        },
+        {
+          selector: 'edge.focused',
+          style: { 'line-opacity': 1, 'z-index': 22 },
         },
         {
           selector: 'node.focused',
@@ -427,12 +435,13 @@ export default function NetworkGraph() {
       const node = evt.target as NodeSingular;
       cy.elements().removeClass('faded unfaded');
       const hood = node.neighborhood();
+      const connectedEdges = node.connectedEdges();
       node.addClass('focused');
       hood.addClass('unfaded');
+      connectedEdges.addClass('focused');
       const rest = cy.elements().not(node.union(hood));
       rest.addClass('faded');
 
-      const connectedEdges = node.connectedEdges();
       const neighborArr = node.neighborhood('node').toArray() as NodeSingular[];
       const top3 = neighborArr
         .sort((a, b) => (b.data('riskScore') as number) - (a.data('riskScore') as number))
@@ -463,6 +472,8 @@ export default function NetworkGraph() {
       const sel = cy.$('node.selected');
       if (sel.nonempty()) {
         sel.addClass('focused');
+        sel.connectedEdges().addClass('focused');
+        sel.neighborhood().addClass('unfaded');
       }
       setTooltip(null);
     });
@@ -470,6 +481,7 @@ export default function NetworkGraph() {
     // Edge hover → tooltip
     cy.on('mouseover', 'edge', (evt) => {
       const edge = evt.target as EdgeSingular;
+      if (!edge.hasClass('focused')) edge.addClass('focused');
       const crimeId = edge.data('linkedCrimeEventId') as string | undefined;
       const crime = crimeId ? crimeEvents.find(c => c.id === crimeId) : null;
       const pos = evt.originalEvent as MouseEvent;
@@ -493,7 +505,10 @@ export default function NetworkGraph() {
       });
     });
 
-    cy.on('mouseout', 'edge', () => setTooltip(null));
+    cy.on('mouseout', 'edge', (evt) => {
+      (evt.target as EdgeSingular).removeClass('focused');
+      setTooltip(null);
+    });
 
     // Single click → select + side panel; double click → open dossier
     let lastTap = { id: '', t: 0 };
@@ -508,14 +523,18 @@ export default function NetworkGraph() {
       }
       lastTap = { id: nodeId, t: now };
       setSelectedNodeId(nodeId);
+      cy.elements().removeClass('faded unfaded focused');
       cy.$('node.selected, edge.selected').removeClass('selected');
       node.addClass('selected');
+      node.neighborhood().addClass('unfaded');
+      node.connectedEdges().addClass('focused');
     });
 
     // Tap background → deselect + close panel
     cy.on('tap', (evt) => {
       if (evt.target === cy) {
         setSelectedNodeId(null);
+        cy.elements().removeClass('faded unfaded focused');
         cy.$('node.selected, edge.selected').removeClass('selected');
       }
     });
@@ -553,7 +572,7 @@ export default function NetworkGraph() {
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    cy.elements().removeClass('faded unfaded');
+    cy.elements().removeClass('faded unfaded focused');
     if (filterType !== 'all') {
       cy.nodes().forEach(n => {
         if (n.data('type') !== filterType) n.addClass('faded');
@@ -657,10 +676,18 @@ export default function NetworkGraph() {
         </div>
       </div>
 
-      {/* Timeline filter */}
+      {/* Timeline filter (collapsible) */}
       <div className="bg-white rounded-xl shadow-sm border border-nexus-border p-3 lg:p-4">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-          <label className="text-sm font-medium text-nexus-text-secondary">{t('timeline')}</label>
+          <button
+            onClick={() => setTimelineOpen(o => !o)}
+            className="flex items-center gap-2 text-sm font-medium text-nexus-text-secondary hover:text-nexus-text transition"
+            aria-expanded={timelineOpen}
+            aria-controls="timeline-panel"
+          >
+            <span className="inline-block transition-transform" style={{ transform: timelineOpen ? 'rotate(90deg)' : 'none' }} aria-hidden="true">▶</span>
+            {t('timeline')}
+          </button>
           <div className="flex gap-1.5" role="group" aria-label="Timeline presets">
             {TIMELINE_PRESETS.map(p => (
               <button
@@ -673,42 +700,44 @@ export default function NetworkGraph() {
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <input
-            type="date"
-            value={dateRange[0]}
-            onChange={e => setDateRange([e.target.value, dateRange[1]])}
-            className="border border-nexus-border rounded-md px-2.5 py-1.5 text-sm"
-            aria-label="Start date"
-          />
-          <div className="flex-1 relative h-6 flex items-center">
-            <div className="w-full h-1 bg-nexus-border rounded-full" />
-            <div
-              className="absolute h-1 bg-nexus-blue rounded-full"
-              style={{
-                left: `${pct(dateRange[0])}%`,
-                width: `${pct(dateRange[1]) - pct(dateRange[0])}%`,
-              }}
+        {timelineOpen && (
+          <div id="timeline-panel" className="flex items-center gap-3 flex-wrap">
+            <input
+              type="date"
+              value={dateRange[0]}
+              onChange={e => setDateRange([e.target.value, dateRange[1]])}
+              className="border border-nexus-border rounded-md px-2.5 py-1.5 text-sm"
+              aria-label="Start date"
             />
-            {crimeEvents.map(ce => (
-              <button
-                key={ce.id}
-                className="absolute w-3.5 h-3.5 bg-nexus-risk-high rounded-full border-2 border-white -translate-x-1/2 cursor-pointer hover:scale-150 transition focus-visible:outline focus-visible:outline-2"
-                style={{ left: `${pct(ce.date)}%` }}
-                title={`FIR ${ce.firNumber} — ${ce.date}`}
-                aria-label={`Focus on crime FIR ${ce.firNumber} (${ce.date})`}
-                onClick={() => setDateRange([iso(new Date(new Date(ce.date).getTime() - 7 * 86400000)), ce.date])}
+            <div className="flex-1 relative overflow-hidden min-w-[160px] h-6 flex items-center">
+              <div className="w-full h-1 bg-nexus-border rounded-full" />
+              <div
+                className="absolute h-1 bg-nexus-blue rounded-full"
+                style={{
+                  left: `${pct(dateRange[0])}%`,
+                  width: `${pct(dateRange[1]) - pct(dateRange[0])}%`,
+                }}
               />
-            ))}
+              {crimeEvents.map(ce => (
+                <button
+                  key={ce.id}
+                  className="absolute w-3.5 h-3.5 bg-nexus-risk-high rounded-full border-2 border-white -translate-x-1/2 cursor-pointer hover:scale-150 transition focus-visible:outline focus-visible:outline-2"
+                  style={{ left: `${pct(ce.date)}%` }}
+                  title={`FIR ${ce.firNumber} — ${ce.date}`}
+                  aria-label={`Focus on crime FIR ${ce.firNumber} (${ce.date})`}
+                  onClick={() => setDateRange([iso(new Date(new Date(ce.date).getTime() - 7 * 86400000)), ce.date])}
+                />
+              ))}
+            </div>
+            <input
+              type="date"
+              value={dateRange[1]}
+              onChange={e => setDateRange([dateRange[0], e.target.value])}
+              className="border border-nexus-border rounded-md px-2.5 py-1.5 text-sm"
+              aria-label="End date"
+            />
           </div>
-          <input
-            type="date"
-            value={dateRange[1]}
-            onChange={e => setDateRange([dateRange[0], e.target.value])}
-            className="border border-nexus-border rounded-md px-2.5 py-1.5 text-sm"
-            aria-label="End date"
-          />
-        </div>
+        )}
       </div>
 
       {/* Graph canvas */}
@@ -845,7 +874,7 @@ export default function NetworkGraph() {
         )}
 
         {/* Hint bar */}
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur rounded-full border border-nexus-border px-3 py-1 text-[11px] text-nexus-text-secondary z-10">
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur rounded-full border border-nexus-border px-3 py-1 text-[11px] text-nexus-text-secondary z-10 pointer-events-none whitespace-nowrap">
           Hover = details · Click = select + panel · Enter = dossier · Esc = close · Drag = move · Scroll = zoom
         </div>
       </div>
