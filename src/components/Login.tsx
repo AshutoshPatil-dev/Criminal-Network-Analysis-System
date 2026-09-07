@@ -73,7 +73,7 @@ export default function Login() {
               {busy ? '…' : t('signIn')}
             </button>
             <p className="text-xs text-nexus-text-secondary leading-relaxed">
-              Officers sign in with their Supabase Auth email and password (admin provisioned). Requires VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to be configured.
+              {lang === 'hi' ? 'अपने अधिकृत अधिकारी क्रेडेंशियल से साइन इन करें।' : 'Sign in with your officer credentials.'}
             </p>
           </form>
         </div>
