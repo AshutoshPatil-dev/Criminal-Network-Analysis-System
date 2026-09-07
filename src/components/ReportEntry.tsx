@@ -5,6 +5,7 @@ import type { TranslationKey } from '../i18n';
 import { uploadCdrFile } from '../lib/supabase';
 import { checksumFile } from '../lib/checksum';
 import { runLinkAnalysis } from '../lib/aiAnalyzer';
+import { extractFirFromImage } from '../lib/firExtractor';
 
 type KindLabelKey =
   | 'detailPhone' | 'detailCallRecords' | 'detailAddress' | 'detailVehicle' | 'detailEmail'
@@ -79,6 +80,13 @@ export default function ReportEntry() {
   const [notice, setNotice] = useState<string | null>(null);
   const [justSubmitted, setJustSubmitted] = useState<string | null>(null);
 
+  // Fill-from-scan (OCR)
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [handwriting, setHandwriting] = useState(false);
+  const [ocrScanFile, setOcrScanFile] = useState<File | null>(null);
+  const [ocrStoragePath, setOcrStoragePath] = useState<string | null>(null);
+  const [ocrStatus, setOcrStatus] = useState<{ tone: 'ok' | 'warn' | 'err'; text: string } | null>(null);
+
   const pendingRef = `REPORT-2026-${pad(submittedReports.length + 1)}`;
   const pendingStamp = `2026-04-${String(28).padStart(2, '0')}`;
 
@@ -106,6 +114,107 @@ export default function ReportEntry() {
     setTags([]);
     setEditId(null);
     setNotice(null);
+  };
+
+  // Normalise OCR date output (DD/MM/YYYY, DD-MM-YYYY, or ISO) to <input type="date"> format.
+  const toInputDate = (raw: string): string => {
+    const s = raw.trim();
+    const m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
+    if (m) {
+      let dd = m[1], mm = m[2];
+      if (Number(mm) > 12) { const tmp = dd; dd = mm; mm = tmp; }
+      const yyyy = m[3].length === 2 ? `20${m[3]}` : m[3];
+      return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+    }
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return iso ? iso[0] : '';
+  };
+
+  const runScanOcr = async (file: File) => {
+    setOcrBusy(true);
+    setOcrStatus(null);
+    try {
+      const res = await extractFirFromImage(file, { handwriting });
+      const filled: string[] = [];
+
+      if (res.fields.subjectName) {
+        setName(res.fields.subjectName);
+        filled.push('subjectName');
+      }
+      if (res.fields.firNumber) {
+        setFirNumber(res.fields.firNumber);
+        filled.push('firNumber');
+      }
+      if (res.fields.incidentLocation) {
+        setIncidentLocation(res.fields.incidentLocation);
+        filled.push('incidentLocation');
+      }
+      if (res.fields.incidentDate) {
+        const d = toInputDate(res.fields.incidentDate);
+        if (d) { setIncidentDate(d); filled.push('incidentDate'); }
+      }
+
+      // Auto-add structured details extracted from the scan (alias + phone).
+      const detailKinds = ['alias', 'phone'] as const;
+      const candidates: { kind: typeof detailKinds[number]; value: string }[] = [];
+      if (res.fields.subjectAliases) {
+        res.fields.subjectAliases.split(',').map(a => a.trim()).filter(Boolean).forEach(v => candidates.push({ kind: 'alias', value: v }));
+      }
+      if (res.fields.complainantPhone && res.fields.complainantPhone.replace(/\D/g, '').length >= 10) {
+        candidates.push({ kind: 'phone', value: res.fields.complainantPhone.trim() });
+      }
+      if (candidates.length > 0) {
+        setDetails(prev => {
+          const known = new Set(prev.map(d => `${d.kind}|${d.value.toLowerCase()}`));
+          const added = candidates
+            .filter(c => !known.has(`${c.kind}|${c.value.toLowerCase()}`))
+            .map(c => ({
+              id: `d-${Date.now()}-${Math.floor(Math.random() * 1000)}-ocr`,
+              kind: c.kind,
+              value: c.value,
+              note: res.provider === 'tesseract' ? 'Extracted from scan — verify' : undefined,
+              tags: ['suspicious'] as TagKey[],
+              createdAt: new Date().toISOString(),
+            }));
+          return added.length ? [...prev, ...added] : prev;
+        });
+        filled.push(`details:${candidates.length}`);
+      }
+
+      // Original scan is stored in case-files, referenced in storage not the report row itself.
+      let storedPath: string | null = null;
+      try {
+        const up = await uploadCdrFile('case-files', file);
+        if (up) {
+          storedPath = up.storagePath;
+          addAuditLog({
+            action: 'upload_attachment',
+            level: 'info',
+            summary: `Stored scan ${file.name} for a new report draft.`,
+            target: up.storagePath,
+          });
+        }
+      } catch { /* offline — metadata only */ }
+      setOcrStoragePath(storedPath);
+
+      addAuditLog({
+        action: 'ocr_fir',
+        level: 'info',
+        summary: `OCR intake on ${file.name} (${res.provider}); ${filled.length} field${filled.length === 1 ? '' : 's'} extracted into a new report draft.`,
+        target: `draft for ${res.fields.subjectName || 'unknown subject'}`,
+      });
+
+      if (filled.length === 0) {
+        setOcrStatus({ tone: 'err', text: t('ocrNothingFound') });
+      } else {
+        setOcrStatus({
+          tone: filled.length <= 2 ? 'warn' : 'ok',
+          text: t(filled.length <= 2 ? 'ocrWeakResult' : 'ocrFillResult').replace('{n}', String(filled.length)),
+        });
+      }
+    } finally {
+      setOcrBusy(false);
+    }
   };
 
   const resetEntryInput = () => {
@@ -235,6 +344,71 @@ export default function ReportEntry() {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Left: identity + details */}
         <div className="lg:col-span-3 space-y-6">
+          {/* Step 0 — fill from scan */}
+          <section className="bg-white rounded-xl shadow-sm border border-nexus-border p-5" aria-label="Fill from document scan">
+            <h2 className="font-semibold text-lg mb-1">{t('ocrFillTitle')}</h2>
+            <p className="text-sm text-nexus-text-secondary mb-4">{t('ocrFillSubtitle')}</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-nexus-text mb-1" htmlFor="ocr-scan">
+                  {t('uploadFirImage')}
+                </label>
+                <label className="flex items-center gap-2 px-3 py-2.5 border-2 border-dashed border-nexus-border rounded-lg text-sm text-nexus-text-secondary cursor-pointer hover:bg-nexus-surface transition">
+                  <span aria-hidden="true">🖼</span>
+                  <span className="truncate">{ocrScanFile ? ocrScanFile.name : t('ocrChooseImage')}</span>
+                  <input
+                    id="ocr-scan"
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    disabled={ocrBusy}
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (f) setOcrScanFile(f);
+                    }}
+                  />
+                </label>
+              </div>
+              <div className="flex flex-col justify-end gap-2">
+                <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={handwriting}
+                    onChange={e => setHandwriting(e.target.checked)}
+                    className="mt-0.5 accent-nexus-blue"
+                    disabled={ocrBusy}
+                  />
+                  <span>
+                    <span className="font-semibold text-nexus-text">{t('handwritingOcr')}</span>
+                    <span className="block text-xs text-nexus-text-secondary">{t('handwritingOcrHint')}</span>
+                  </span>
+                </label>
+                <button
+                  onClick={() => ocrScanFile && runScanOcr(ocrScanFile)}
+                  disabled={!ocrScanFile || ocrBusy}
+                  className="px-4 py-2.5 rounded-lg bg-nexus-blue text-white text-sm font-semibold hover:bg-nexus-blue-light disabled:opacity-40 disabled:cursor-not-allowed transition w-full"
+                >
+                  {ocrBusy ? t('ocrBusy') : `⟳ ${t('ocrRun')}`}
+                </button>
+              </div>
+            </div>
+
+            {ocrStatus && (
+              <p
+                className={`mt-3 text-sm px-3 py-2 rounded-lg border ${ocrStatus.tone === 'err' ? 'bg-red-50 border-red-300 text-red-800' : ocrStatus.tone === 'warn' ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-green-50 border-green-300 text-green-800'}`}
+                role="status"
+              >
+                {ocrStatus.text}
+              </p>
+            )}
+            {ocrStoragePath && (
+              <p className="mt-2 text-xs font-mono text-nexus-text-secondary truncate" title={ocrStoragePath}>
+                {t('ocrScanStored')}: {ocrStoragePath}
+              </p>
+            )}
+          </section>
+
           {/* Step 1 — identity */}
           <section className="bg-white rounded-xl shadow-sm border border-nexus-border p-5" aria-label="Subject identity">
             <h2 className="font-semibold text-lg mb-1">1 · {t('subjectName')}</h2>
