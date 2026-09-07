@@ -1,16 +1,26 @@
+import { lazy, Suspense } from 'react';
 import { useApp } from '../store';
 import Login from './Login';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
-import NetworkGraph from './NetworkGraph';
-import EntityProfile from './EntityProfile';
-import PatternAnomaly from './PatternAnomaly';
-import ReportEntry from './ReportEntry';
-import AuditLogs from './AuditLogs';
-import AiAnalysis from './AiAnalysis';
-import FirReport from './FirReport';
-import Officers from './Officers';
+
+const NetworkGraph = lazy(() => import('./NetworkGraph'));
+const EntityProfile = lazy(() => import('./EntityProfile'));
+const PatternAnomaly = lazy(() => import('./PatternAnomaly'));
+const ReportEntry = lazy(() => import('./ReportEntry'));
+const AuditLogs = lazy(() => import('./AuditLogs'));
+const AiAnalysis = lazy(() => import('./AiAnalysis'));
+const FirReport = lazy(() => import('./FirReport'));
+const Officers = lazy(() => import('./Officers'));
+
+function ScreenFallback() {
+  return (
+    <div className="flex items-center justify-center h-full min-h-[60vh]" role="status" aria-label="loading">
+      <div className="w-8 h-8 border-2 border-nexus-blue border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 export default function Layout() {
   const { activeScreen, t, user, findingsToast, clearFindingsToast, setActiveScreen } = useApp();
@@ -23,15 +33,17 @@ export default function Layout() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-auto" role="main">
-          {activeScreen === 'dashboard' && <Dashboard />}
-          {activeScreen === 'graph' && <NetworkGraph />}
-          {activeScreen === 'profile' && <EntityProfile />}
-          {activeScreen === 'patterns' && <PatternAnomaly />}
-          {activeScreen === 'report' && <ReportEntry />}
-          {activeScreen === 'logs' && <AuditLogs />}
-          {activeScreen === 'analysis' && <AiAnalysis />}
-          {activeScreen === 'fir' && <FirReport />}
-          {activeScreen === 'officers' && <Officers />}
+          <Suspense fallback={<ScreenFallback />}>
+            {activeScreen === 'dashboard' && <Dashboard />}
+            {activeScreen === 'graph' && <NetworkGraph />}
+            {activeScreen === 'profile' && <EntityProfile />}
+            {activeScreen === 'patterns' && <PatternAnomaly />}
+            {activeScreen === 'report' && <ReportEntry />}
+            {activeScreen === 'logs' && <AuditLogs />}
+            {activeScreen === 'analysis' && <AiAnalysis />}
+            {activeScreen === 'fir' && <FirReport />}
+            {activeScreen === 'officers' && <Officers />}
+          </Suspense>
         </main>
       </div>
 

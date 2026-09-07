@@ -241,6 +241,8 @@ export function detectAnomalies(graph: Graph): Anomaly[] {
   }
 
   // Bridge nodes: person whose removal disconnects the graph.
+  const adj = neighborsOf(relationships);
+  const adjOf = (id: string) => adj.get(id) ?? new Set<string>();
   const bridgeCandidates = entities.filter(e => e.type === 'person');
   const components = (removedId: string | null) => {
     const seen = new Set<string>();
@@ -261,7 +263,6 @@ export function detectAnomalies(graph: Graph): Anomaly[] {
     }
     return count;
   };
-  const adjOf = (id: string) => neighborsOf(relationships).get(id) ?? new Set<string>();
   const base = components(null);
   const bridges = bridgeCandidates
     .filter(e => components(e.id) > base)

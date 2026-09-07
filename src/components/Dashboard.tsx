@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useApp } from '../store';
 import { riskColor } from '../utils/theme';
 
@@ -7,21 +8,35 @@ export default function Dashboard() {
   const totalEntities = entities.length;
   const totalRelationships = relationships.length;
 
-  const topInfluencers = [...centralityScores]
-    .sort((a, b) => b.pageRank - a.pageRank)
-    .slice(0, 6)
-    .map(cs => {
-      const e = entities.find(e => e.id === cs.entityId && e.type === 'person');
-      if (!e) return null;
-      return { ...e, pageRank: cs.pageRank, degree: cs.degree };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
+  const topInfluencers = useMemo(
+    () => [...centralityScores]
+      .sort((a, b) => b.pageRank - a.pageRank)
+      .slice(0, 6)
+      .map(cs => {
+        const e = entities.find(e => e.id === cs.entityId && e.type === 'person');
+        if (!e) return null;
+        return { ...e, pageRank: cs.pageRank, degree: cs.degree };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null),
+    [centralityScores, entities],
+  );
 
-  const topFlags = anomalies
-    .slice()
-    .sort((a, b) => ({ high: 0, medium: 1, low: 2 }[a.severity] - { high: 0, medium: 1, low: 2 }[b.severity]))
-    .slice(0, 3)
-    .map(a => ({ icon: a.type === 'burner_phone' ? '🔥' : a.type === 'bridge_node' ? '🌉' : a.type === 'unusual_pattern' ? '📊' : '⚠', text: a.description, sev: a.severity }));
+  const topFlags = useMemo(
+    () => anomalies
+      .slice()
+      .sort((a, b) => ({ high: 0, medium: 1, low: 2 }[a.severity] - { high: 0, medium: 1, low: 2 }[b.severity]))
+      .slice(0, 3)
+      .map(a => ({ icon: a.type === 'burner_phone' ? '🔥' : a.type === 'bridge_node' ? '🌉' : a.type === 'unusual_pattern' ? '📊' : '⚠', text: a.description, sev: a.severity })),
+    [anomalies],
+  );
+
+  const typeCounts = useMemo(() => ([
+    ['persons', '#0B3D91', entities.filter(e => e.type === 'person').length],
+    ['phones', '#7C3AED', entities.filter(e => e.type === 'phone').length],
+    ['vehicles', '#DC2626', entities.filter(e => e.type === 'vehicle').length],
+    ['locations', '#16A34A', entities.filter(e => e.type === 'location').length],
+    ['organizations', '#F59E0B', entities.filter(e => e.type === 'org').length],
+  ] as const), [entities]);
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-6">
@@ -135,13 +150,7 @@ export default function Dashboard() {
           <div className="bg-white rounded-xl shadow-sm border border-nexus-border p-5">
             <h2 className="font-semibold text-lg mb-3">{t('filterByType')}</h2>
             <div className="grid grid-cols-2 gap-2">
-              {([
-                ['persons', '#0B3D91', entities.filter(e => e.type === 'person').length],
-                ['phones', '#7C3AED', entities.filter(e => e.type === 'phone').length],
-                ['vehicles', '#DC2626', entities.filter(e => e.type === 'vehicle').length],
-                ['locations', '#16A34A', entities.filter(e => e.type === 'location').length],
-                ['organizations', '#F59E0B', entities.filter(e => e.type === 'org').length],
-              ] as const).map(([label, color, count]) => (
+              {typeCounts.map(([label, color, count]) => (
                 <div key={label} className="flex items-center gap-2 text-sm">
                   <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} aria-hidden="true" />
                   <span className="text-nexus-text-secondary">{t(label)}</span>
