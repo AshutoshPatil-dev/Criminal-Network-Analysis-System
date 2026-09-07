@@ -255,6 +255,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (logs.length) setAuditLogs(logs);
       if (reports.length) setSubmittedReports(reports);
       if (firs.length) setFirDocuments(firs);
+      // Point the timeline at the loaded data span instead of the placeholder
+      // 2000–2099 range, so the date inputs show meaningful values.
+      const stamps = [...rel.flatMap(r => r.timestamps ?? []), ...evs.map(e => e.date)]
+        .map(s => new Date(s).getTime())
+        .filter(n => !Number.isNaN(n));
+      if (stamps.length > 0) {
+        const lo = new Date(Math.min(...stamps)).toISOString().slice(0, 10);
+        const hi = new Date(Math.max(...stamps)).toISOString().slice(0, 10);
+        setDateRange([lo, hi]);
+      }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
