@@ -3,7 +3,7 @@ import { entityTypeColors, riskColor, riskLabelKey } from '../utils/theme';
 import { entityTypeLabel, relationshipTypeLabel, type TranslationKey } from '../i18n';
 
 export default function EntityProfile() {
-  const { t, selectedEntityId, openProfile, goBack, entities, relationships, crimeEvents, centralityScores } = useApp();
+  const { t, selectedEntityId, openProfile, goBack, entities, relationships, crimeEvents } = useApp();
 
   const entity = selectedEntityId ? entities.find(e => e.id === selectedEntityId) : null;
 
@@ -37,7 +37,6 @@ export default function EntityProfile() {
   }).filter(r => r.otherEntity);
 
   const linkedCrimes = crimeEvents.filter(ce => ce.involvedEntityIds.includes(entity.id));
-  const cs = centralityScores.find(c => c.entityId === entity.id);
   const aliases = entity.attributes.aliases ? entity.attributes.aliases.split(',').map(a => a.trim()).filter(Boolean) : [];
 
   const ATTRIBUTE_KEYS: Record<string, TranslationKey> = {
@@ -115,32 +114,6 @@ export default function EntityProfile() {
                   <span key={a} className="px-2.5 py-1 bg-nexus-surface rounded-md text-sm font-medium">{a}</span>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Centrality Scores */}
-          {cs && (
-            <div className="bg-white rounded-xl shadow-sm border border-nexus-border p-5">
-              <h3 className="font-semibold mb-3">{t('centrality')}</h3>
-              {[
-                [t('degree'), cs.degree],
-                [t('betweenness'), cs.betweenness],
-                [t('eigenvector'), cs.eigenvector],
-                [t('pageRank'), cs.pageRank],
-              ].map(([label, value]) => (
-                <div key={label as string} className="mb-2">
-                  <div className="flex items-center justify-between text-sm mb-0.5">
-                    <span className="text-nexus-text-secondary">{label as string}</span>
-                    <span className="font-mono">{((value as number) * 100).toFixed(1)}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-nexus-surface rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-nexus-blue rounded-full"
-                      style={{ width: `${(value as number) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
             </div>
           )}
 

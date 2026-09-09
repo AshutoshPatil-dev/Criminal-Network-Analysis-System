@@ -1,13 +1,11 @@
 import { useApp } from '../store';
-import { riskColor, entityTypeColors } from '../utils/theme';
+import { riskColor } from '../utils/theme';
 import type { Anomaly, Entity } from '../types';
 
 const COMMUNITY_COLORS = ['#0B3D91', '#16A34A', '#F59E0B', '#DC2626'];
 
 export default function PatternAnomaly() {
-  const { t, openProfile, centralityScores, communities, anomalies, entities } = useApp();
-
-  const sortedByCentrality = [...centralityScores].sort((a, b) => b.pageRank - a.pageRank);
+  const { t, openProfile, communities, anomalies, entities } = useApp();
 
   const anomalyIcons: Record<Anomaly['type'], string> = {
     new_contact_before_crime: '⚠',
@@ -39,78 +37,7 @@ export default function PatternAnomaly() {
     <div className="p-6 max-w-screen-2xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold text-nexus-text">{t('patterns')}</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Key Influencers */}
-        <div className="bg-white rounded-xl shadow-sm border border-nexus-border">
-          <div className="px-5 py-4 border-b border-nexus-border">
-            <h2 className="font-semibold text-lg">{t('influence')} — {t('centrality')}</h2>
-          </div>
-          <div className="p-4 overflow-y-auto max-h-[600px]">
-            <table className="w-full text-sm" aria-label="Centrality scores">
-              <thead>
-                <tr className="text-nexus-text-secondary text-xs uppercase">
-                  <th className="text-left py-2">#</th>
-                  <th className="text-left py-2">{t('nameCol')}</th>
-                  <th className="text-right py-2">{t('degree')}</th>
-                  <th className="text-right py-2">{t('betweenness')}</th>
-                  <th className="text-right py-2">{t('pageRank')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-nexus-border">
-                {sortedByCentrality.map((cs, i) => {
-                  const entity = entities.find(e => e.id === cs.entityId);
-                  if (!entity || entity.type !== 'person') return null;
-                  return (
-                    <tr
-                      key={cs.entityId}
-                      className="hover:bg-nexus-surface cursor-pointer"
-                      onClick={() => { openProfile(cs.entityId); }}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`View ${entity.name} profile`}
-                    >
-                      <td className="py-2.5 font-mono text-nexus-text-secondary">{i + 1}</td>
-                      <td className="py-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="w-6 h-6 rounded flex items-center justify-center text-white text-xs" style={{ backgroundColor: entityTypeColors[entity.type] }} aria-hidden="true">{entity.name.charAt(0)}</span>
-                          <div>
-                            <p className="font-medium truncate max-w-[120px]">{entity.name.split(' ')[0]}</p>
-                            <p className="text-xs text-nexus-text-secondary">{entity.attributes.role}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-2.5 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <div className="w-10 h-1.5 bg-nexus-surface rounded-full overflow-hidden">
-                            <div className="h-full bg-nexus-blue rounded-full" style={{ width: `${cs.degree * 100}%` }} />
-                          </div>
-                          <span className="font-mono text-xs w-8">{(cs.degree * 100).toFixed(0)}</span>
-                        </div>
-                      </td>
-                      <td className="py-2.5 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <div className="w-10 h-1.5 bg-nexus-surface rounded-full overflow-hidden">
-                            <div className="h-full bg-nexus-risk-medium rounded-full" style={{ width: `${cs.betweenness * 100}%` }} />
-                          </div>
-                          <span className="font-mono text-xs w-8">{(cs.betweenness * 100).toFixed(0)}</span>
-                        </div>
-                      </td>
-                      <td className="py-2.5 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <div className="w-10 h-1.5 bg-nexus-surface rounded-full overflow-hidden">
-                            <div className="h-full bg-nexus-risk-high rounded-full" style={{ width: `${cs.pageRank * 500}%` }} />
-                          </div>
-                          <span className="font-mono text-xs w-8">{(cs.pageRank * 100).toFixed(1)}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Communities */}
         <div className="bg-white rounded-xl shadow-sm border border-nexus-border">
           <div className="px-5 py-4 border-b border-nexus-border">
