@@ -154,15 +154,19 @@ create table if not exists public.fir_documents (
 -- ---------------------------------------------------------------------------
 alter table public.profiles enable row level security;
 
+drop policy if exists "profiles read own or admin" on public.profiles;
 create policy "profiles read own or admin" on public.profiles
   for select using (id = auth.uid() or public.is_admin());
 
+drop policy if exists "profiles insert admin only" on public.profiles;
 create policy "profiles insert admin only" on public.profiles
   for insert with check (public.is_admin());
 
+drop policy if exists "profiles update admin only" on public.profiles;
 create policy "profiles update admin only" on public.profiles
   for update using (public.is_admin()) with check (public.is_admin());
 
+drop policy if exists "profiles delete admin only" on public.profiles;
 create policy "profiles delete admin only" on public.profiles
   for delete using (public.is_admin());
 
@@ -175,14 +179,23 @@ alter table public.report_detail_history enable row level security;
 alter table public.audit_logs enable row level security;
 alter table public.fir_documents enable row level security;
 
+drop policy if exists "demo read entities" on public.entities;
 create policy "demo read entities" on public.entities for select using (true);
+drop policy if exists "demo read relationships" on public.relationships;
 create policy "demo read relationships" on public.relationships for select using (true);
+drop policy if exists "demo read crime_events" on public.crime_events;
 create policy "demo read crime_events" on public.crime_events for select using (true);
+drop policy if exists "demo write reports" on public.reports;
 create policy "demo write reports" on public.reports for all using (true) with check (true);
+drop policy if exists "demo write detail_history" on public.report_detail_history;
 create policy "demo write detail_history" on public.report_detail_history for all using (true) with check (true);
+drop policy if exists "demo insert audit_logs" on public.audit_logs;
 create policy "demo insert audit_logs" on public.audit_logs for insert with check (true);
+drop policy if exists "demo read audit_logs" on public.audit_logs;
 create policy "demo read audit_logs" on public.audit_logs for select using (true);
+drop policy if exists "demo write fir_documents" on public.fir_documents;
 create policy "demo write fir_documents" on public.fir_documents for all using (true) with check (true);
+drop policy if exists "demo read fir_documents" on public.fir_documents;
 create policy "demo read fir_documents" on public.fir_documents for select using (true);
 
 -- ---------------------------------------------------------------------------
@@ -192,10 +205,12 @@ insert into storage.buckets (id, name, public)
 values ('case-files', 'case-files', false)
 on conflict (id) do nothing;
 
+drop policy if exists "demo upload case-files" on storage.objects;
 create policy "demo upload case-files" on storage.objects
   for insert to authenticated, anon
   with check (bucket_id = 'case-files');
 
+drop policy if exists "demo read case-files" on storage.objects;
 create policy "demo read case-files" on storage.objects
   for select to authenticated, anon
   using (bucket_id = 'case-files');
