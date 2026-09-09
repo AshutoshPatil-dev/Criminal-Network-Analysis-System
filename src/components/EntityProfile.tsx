@@ -1,5 +1,6 @@
 import { useApp } from '../store';
 import { entityTypeColors, riskColor, riskLabelKey } from '../utils/theme';
+import { entityTypeLabel, relationshipTypeLabel, type TranslationKey } from '../i18n';
 
 export default function EntityProfile() {
   const { t, selectedEntityId, openProfile, goBack, entities, relationships, crimeEvents, centralityScores } = useApp();
@@ -11,7 +12,7 @@ export default function EntityProfile() {
       <div className="p-6 max-w-screen-2xl mx-auto">
         <div className="bg-white rounded-xl shadow-sm border border-nexus-border p-12 text-center">
           <p className="text-nexus-text-secondary text-lg mb-4">{t('noData')}</p>
-          <p className="text-sm text-nexus-text-secondary mb-6">Select an entity from the dashboard or network graph to view its profile.</p>
+          <p className="text-sm text-nexus-text-secondary mb-6">{t('profileHint')}</p>
           <div className="flex flex-wrap gap-2 justify-center">
             {entities.filter(e => e.type === 'person').slice(0, 8).map(p => (
               <button
@@ -39,20 +40,32 @@ export default function EntityProfile() {
   const cs = centralityScores.find(c => c.entityId === entity.id);
   const aliases = entity.attributes.aliases ? entity.attributes.aliases.split(',').map(a => a.trim()).filter(Boolean) : [];
 
+  const ATTRIBUTE_KEYS: Record<string, TranslationKey> = {
+    role: 'role',
+    address: 'address',
+    aliases: 'aliases',
+    owner: 'owner',
+    vehicleRegistration: 'vehicleNumber',
+    phone: 'detailPhone',
+    employers: 'detailEmployer',
+    bankAccounts: 'detailBank',
+  };
+  const attrLabel = (k: string): string => ATTRIBUTE_KEYS[k] ? t(ATTRIBUTE_KEYS[k]) : k.charAt(0).toUpperCase() + k.slice(1);
+
   // Timeline events
   const timelineEvents = linkedRels.flatMap(r =>
     r.timestamps.map(ts => ({
       date: ts,
       type: r.type,
       other: r.source === entity.id ? r.target : r.source,
-      otherName: entities.find(e => e.id === (r.source === entity.id ? r.target : r.source))?.name || 'Unknown',
+      otherName: entities.find(e => e.id === (r.source === entity.id ? r.target : r.source))?.name || t('unknown'),
     }))
   ).sort((a, b) => a.date.localeCompare(b.date));
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <button onClick={goBack} className="text-nexus-blue hover:underline text-sm">&larr; Back</button>
+        <button onClick={goBack} className="text-nexus-blue hover:underline text-sm">&larr; {t('back')}</button>
         <h1 className="text-2xl font-bold text-nexus-text">{t('profile')}</h1>
       </div>
 
@@ -75,13 +88,13 @@ export default function EntityProfile() {
               {t(riskLabelKey(entity.riskScore))} ({entity.riskScore})
             </span>
           </div>
-          <p className="text-sm text-nexus-text-secondary mt-1 capitalize">{entity.type} — ID: {entity.id}</p>
+          <p className="text-sm text-nexus-text-secondary mt-1">{entityTypeLabel(t, entity.type)} — {t('idLabel')}: {entity.id}</p>
           <div className="flex flex-wrap gap-4 mt-3 text-sm">
             {Object.entries(entity.attributes).map(([k, v]) => {
               if (!v) return null;
               return (
                 <div key={k}>
-                  <span className="text-nexus-text-secondary">{k.charAt(0).toUpperCase() + k.slice(1)}:</span>{' '}
+                  <span className="text-nexus-text-secondary">{attrLabel(k)}:</span>{' '}
                   <span className="font-medium">{v}</span>
                 </div>
               );
@@ -157,7 +170,7 @@ export default function EntityProfile() {
                 <div key={i} className="relative mb-4">
                   <div className="absolute -left-4 top-1 w-3 h-3 rounded-full border-2 border-white" style={{ backgroundColor: evt.type === 'call' ? '#64748B' : evt.type === 'meeting' ? '#0B3D91' : evt.type === 'transaction' ? '#16A34A' : '#F59E0B' }} aria-hidden="true" />
                   <p className="text-xs font-medium">{evt.date}</p>
-                  <p className="text-xs text-nexus-text-secondary capitalize">{evt.type} — {evt.otherName}</p>
+                  <p className="text-xs text-nexus-text-secondary">{relationshipTypeLabel(t, evt.type)} — {evt.otherName}</p>
                 </div>
               ))}
             </div>
@@ -188,7 +201,7 @@ export default function EntityProfile() {
                       </span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{other.name}</p>
-                        <p className="text-xs text-nexus-text-secondary capitalize">{rel.type} ({rel.count}x)</p>
+                        <p className="text-xs text-nexus-text-secondary">{relationshipTypeLabel(t, rel.type)} ({rel.count}x)</p>
                       </div>
                       <span
                         className="w-2 h-2 rounded-full flex-shrink-0"

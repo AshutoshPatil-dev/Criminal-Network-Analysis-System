@@ -207,7 +207,7 @@ export default function FirReport() {
             aria-label="Load saved FIR document"
             title="Load a saved FIR document"
           >
-            <option value="">＋ New FIR document…</option>
+            <option value="">{t('newFirDoc')}</option>
             {firDocuments.map(d => (
               <option key={d.ref} value={d.ref}>{d.firNumber || d.ref}{d.subjectName ? ` — ${d.subjectName}` : ''}</option>
             ))}
@@ -262,7 +262,7 @@ export default function FirReport() {
               disabled={ocrBusy}
               className="w-full border-2 border-dashed border-nexus-border rounded-lg py-6 text-center text-sm text-nexus-text-secondary hover:bg-nexus-surface transition"
             >
-              {ocrBusy ? 'Reading image…' : '📷  ' + t('ocrDropHint')}
+              {ocrBusy ? t('readingImage') : '📷  ' + t('ocrDropHint')}
             </button>
             {ocrImage && <img src={ocrImage} alt="Uploaded FIR" className="mt-3 rounded-lg border border-nexus-border max-h-40 object-contain" />}
             {ocrInfo && (
@@ -272,7 +272,7 @@ export default function FirReport() {
                 </p>
                 <p className="text-[11px] text-nexus-text-secondary mt-1">{OCR_HINT[ocrInfo.provider]}</p>
                 <details className="mt-2">
-                  <summary className="text-[11px] text-nexus-blue cursor-pointer">Confidence per field</summary>
+                  <summary className="text-[11px] text-nexus-blue cursor-pointer">{t('confidencePerField')}</summary>
                   <ul className="mt-1 space-y-0.5 text-[11px]">
                     {Object.entries(ocrInfo.confidence).map(([k, c]) => (
                       <li key={k} className="flex justify-between"><span className="text-nexus-text-secondary">{k}</span><span className="font-mono">{Math.round(c * 100)}%</span></li>
@@ -288,7 +288,7 @@ export default function FirReport() {
             <div className="flex gap-2 mb-2">
               {(['call_records', 'transaction_history', 'other'] as const).map(k => (
                 <button key={k} onClick={() => setAttachmentKind(k)} className={`px-2 py-1 rounded-md text-[11px] font-semibold border ${attachmentKind === k ? 'bg-nexus-blue text-white border-nexus-blue' : 'border-nexus-border text-nexus-text-secondary'}`}>
-                  {k === 'call_records' ? 'CDR' : k === 'transaction_history' ? 'TXN' : 'Other'}
+                  {k === 'call_records' ? 'CDR' : k === 'transaction_history' ? 'TXN' : t('other')}
                 </button>
               ))}
             </div>

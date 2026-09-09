@@ -96,7 +96,7 @@ export default function Dashboard() {
                     </div>
                     <span className="text-xs font-mono w-8">{(person.pageRank * 100).toFixed(1)}</span>
                   </div>
-                  <p className="text-xs text-nexus-text-secondary mt-0.5">Rank: {(person.degree * 100).toFixed(0)}%</p>
+                  <p className="text-xs text-nexus-text-secondary mt-0.5">{t('rankLabel')}: {(person.degree * 100).toFixed(0)}%</p>
                 </div>
               </button>
             ))}
@@ -119,7 +119,7 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-sm font-semibold text-nexus-blue">{fir.firNumber}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-nexus-risk-high font-medium">
-                      {fir.involvedEntityIds.length} involved
+                      {fir.involvedEntityIds.length} {t('involvedLabel')}
                     </span>
                   </div>
                   <p className="text-xs text-nexus-text-secondary mt-1">{fir.location} — {fir.date}</p>
