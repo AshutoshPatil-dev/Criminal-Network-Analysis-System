@@ -321,16 +321,16 @@ export default function NetworkGraph() {
         animate: true,
         animationDuration: 500,
         fit: true,
-        padding: 90,
+        padding: 80,
         nodeDimensionsIncludeLabels: true,
         randomize: false,
-        nodeRepulsion: (node: NodeSingular) => 26000 + Math.pow(node.data('size') as number, 2.4),
-        idealEdgeLength: () => 240,
-        edgeElasticity: () => 24,
-        gravity: 0.12,
+        nodeRepulsion: (node: NodeSingular) => 22000 + Math.pow(node.data('size') as number, 2.2),
+        idealEdgeLength: () => 170,
+        edgeElasticity: () => 18,
+        gravity: 0.15,
         numIter: 1400,
         coolingFactor: 0.95,
-        componentSpacing: 260,
+        componentSpacing: 220,
       },
       style: [
         {
@@ -384,7 +384,7 @@ export default function NetworkGraph() {
             'curve-style': 'bezier',
             'target-arrow-color': '#CBD5E1',
             'target-arrow-shape': 'none',
-            'line-opacity': 0.35,
+            'line-opacity': 0.25,
             'z-index': 1,
           },
         },
@@ -493,10 +493,13 @@ export default function NetworkGraph() {
     });
 
     cy.on('mouseout', 'node', () => {
-      cy.elements().removeClass('faded unfaded focused');
+      // Re-apply the type filter first so hover never erases its dimming;
+      // clear hover focus afterwards (selection focus is restored on top).
+      applyFilter(cy, filterTypeRef.current);
+      cy.$('node.focused, edge.focused').removeClass('focused');
       const sel = cy.$('node.selected');
       if (sel.nonempty()) {
-        sel.addClass('focused');
+        sel.removeClass('faded').addClass('focused');
         sel.connectedEdges().addClass('focused');
         sel.neighborhood().addClass('unfaded');
       }
@@ -548,9 +551,9 @@ export default function NetworkGraph() {
       }
       lastTap = { id: nodeId, t: now };
       setSelectedNodeId(nodeId);
-      cy.elements().removeClass('faded unfaded focused');
+      applyFilter(cy, filterTypeRef.current);
       cy.$('node.selected, edge.selected').removeClass('selected');
-      node.addClass('selected');
+      node.addClass('selected').removeClass('faded');
       node.neighborhood().addClass('unfaded');
       node.connectedEdges().addClass('focused');
     });
@@ -559,7 +562,7 @@ export default function NetworkGraph() {
     cy.on('tap', (evt) => {
       if (evt.target === cy) {
         setSelectedNodeId(null);
-        cy.elements().removeClass('faded unfaded focused');
+        applyFilter(cy, filterTypeRef.current);
         cy.$('node.selected, edge.selected').removeClass('selected');
       }
     });
