@@ -29,6 +29,12 @@ export default function PatternAnomaly() {
     unusual_pattern: t('unusualPattern'),
   };
 
+  const severityLabels: Record<Anomaly['severity'], string> = {
+    high: t('severityHigh'),
+    medium: t('severityMedium'),
+    low: t('severityLow'),
+  };
+
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold text-nexus-text">{t('patterns')}</h1>
@@ -44,7 +50,7 @@ export default function PatternAnomaly() {
               <thead>
                 <tr className="text-nexus-text-secondary text-xs uppercase">
                   <th className="text-left py-2">#</th>
-                  <th className="text-left py-2">Name</th>
+                  <th className="text-left py-2">{t('nameCol')}</th>
                   <th className="text-right py-2">{t('degree')}</th>
                   <th className="text-right py-2">{t('betweenness')}</th>
                   <th className="text-right py-2">{t('pageRank')}</th>
@@ -121,7 +127,7 @@ export default function PatternAnomaly() {
                       {i}
                     </span>
                     <span className="font-semibold text-sm">{t('community')} #{i}</span>
-                    <span className="text-xs text-nexus-text-secondary">({members.length} members)</span>
+                    <span className="text-xs text-nexus-text-secondary">({members.length} {t('members')})</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {members.map(m => m && (
@@ -154,7 +160,7 @@ export default function PatternAnomaly() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${a.severity === 'high' ? 'bg-red-200 text-red-800' : a.severity === 'medium' ? 'bg-amber-200 text-amber-800' : 'bg-blue-200 text-blue-800'}`}>
-                        {a.severity}
+                        {severityLabels[a.severity]}
                       </span>
                       <span className="text-xs font-medium text-nexus-text-secondary">{anomalyLabels[a.type]}</span>
                     </div>

@@ -3,7 +3,7 @@ import cytoscape, { type Core, type NodeSingular, type EdgeSingular } from 'cyto
 import { useApp } from '../store';
 import { entityTypeColors, riskColor } from '../utils/theme';
 import type { Entity, EntityType, RelationshipType, Relationship, CrimeEvent, Community } from '../types';
-import type { TranslationKey } from '../i18n';
+import { type TranslationKey, entityTypeLabel, relationshipTypeLabel } from '../i18n';
 
 const relTypeStyles: Record<RelationshipType, { color: string; dash?: string }> = {
   call: { color: '#64748B' },
@@ -675,13 +675,13 @@ export default function NetworkGraph() {
               value={entityQuery}
               onChange={e => setEntityQuery(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && entityMatches.length > 0) focusEntity(entityMatches[0].id); }}
-              placeholder="Focus node…"
+              placeholder={t('focusNode')}
               className="border border-nexus-border rounded-md px-2 py-1 text-sm bg-white w-36 focus:w-52 transition-all"
-              aria-label="Focus on an entity in the graph"
+              aria-label={t('focusNodeAria')}
             />
             {entityQuery.trim().length > 0 && (
-              <ul className="absolute top-full mt-1 left-0 w-52 bg-white rounded-lg shadow-xl border border-nexus-border text-nexus-text max-h-64 overflow-y-auto z-20" role="listbox" aria-label="Entity focus results">
-                {entityMatches.length === 0 && <li className="px-3 py-2 text-xs text-nexus-text-secondary">No matches</li>}
+              <ul className="absolute top-full mt-1 left-0 w-52 bg-white rounded-lg shadow-xl border border-nexus-border text-nexus-text max-h-64 overflow-y-auto z-20" role="listbox" aria-label={t('focusNodeAria')}>
+                {entityMatches.length === 0 && <li className="px-3 py-2 text-xs text-nexus-text-secondary">{t('noMatches')}</li>}
                 {entityMatches.map(e => (
                   <li key={e.id}>
                     <button
@@ -691,7 +691,7 @@ export default function NetworkGraph() {
                     >
                       <span className="text-xs" aria-hidden="true">{TYPE_ICON[e.type]}</span>
                       <span className="font-medium truncate flex-1">{e.name}</span>
-                      <span className="text-nexus-text-secondary text-xs capitalize flex-shrink-0">{e.type}</span>
+                      <span className="text-nexus-text-secondary text-xs flex-shrink-0">{entityTypeLabel(t, e.type)}</span>
                     </button>
                   </li>
                 ))}
@@ -717,14 +717,14 @@ export default function NetworkGraph() {
             <span className="inline-block transition-transform" style={{ transform: timelineOpen ? 'rotate(90deg)' : 'none' }} aria-hidden="true">▶</span>
             {t('timeline')}
           </button>
-          <div className="flex gap-1.5" role="group" aria-label="Timeline presets">
+          <div className="flex gap-1.5" role="group" aria-label={t('timelinePresetsAria')}>
             {TIMELINE_PRESETS.map(p => (
               <button
                 key={p.label}
                 onClick={() => setDateRange(p.range)}
                 className={`text-xs px-2 py-1 rounded-md border transition ${dateRange[0] === p.range[0] && dateRange[1] === p.range[1] ? 'bg-nexus-blue text-white border-nexus-blue' : 'border-nexus-border text-nexus-text-secondary hover:bg-nexus-surface'}`}
               >
-                {p.label}
+                {p.label === 'Full' ? t('timelineFull') : p.label}
               </button>
             ))}
           </div>
@@ -736,7 +736,7 @@ export default function NetworkGraph() {
               value={dateRange[0]}
               onChange={e => setDateRange([e.target.value, dateRange[1]])}
               className="border border-nexus-border rounded-md px-2.5 py-1.5 text-sm"
-              aria-label="Start date"
+              aria-label={t('startDate')}
             />
             <div className="flex-1 relative overflow-hidden min-w-[160px] h-6 flex items-center">
               <div className="w-full h-1 bg-nexus-border rounded-full" />
@@ -752,8 +752,8 @@ export default function NetworkGraph() {
                   key={ce.id}
                   className="absolute w-3.5 h-3.5 bg-nexus-risk-high rounded-full border-2 border-white -translate-x-1/2 cursor-pointer hover:scale-150 transition focus-visible:outline focus-visible:outline-2"
                   style={{ left: `${pct(ce.date)}%` }}
-                  title={`FIR ${ce.firNumber} — ${ce.date}`}
-                  aria-label={`Focus on crime FIR ${ce.firNumber} (${ce.date})`}
+                  title={`${t('focusCrime')} ${ce.firNumber} — ${ce.date}`}
+                  aria-label={`${t('focusCrime')} ${ce.firNumber} (${ce.date})`}
                   onClick={() => setDateRange([iso(new Date(new Date(ce.date).getTime() - 7 * 86400000)), ce.date])}
                 />
               ))}
@@ -763,7 +763,7 @@ export default function NetworkGraph() {
               value={dateRange[1]}
               onChange={e => setDateRange([dateRange[0], e.target.value])}
               className="border border-nexus-border rounded-md px-2.5 py-1.5 text-sm"
-              aria-label="End date"
+              aria-label={t('endDate')}
             />
           </div>
         )}
@@ -778,17 +778,17 @@ export default function NetworkGraph() {
           <div className="absolute inset-0 flex items-center justify-center z-10">
             <div className="bg-white/95 backdrop-blur rounded-xl border border-nexus-border p-6 text-center max-w-sm mx-4">
               <p className="text-4xl mb-2" aria-hidden="true">🗺️</p>
-              <p className="font-semibold text-nexus-text mb-1">No case data loaded yet.</p>
+              <p className="font-semibold text-nexus-text mb-1">{t('noCaseData')}</p>
               <p className="text-sm text-nexus-text-secondary">
                 Run <code className="bg-nexus-surface px-1.5 py-0.5 rounded text-xs">supabase/seed_data.sql</code>{' '}
-                in the Supabase SQL editor, then reload.
+                {t('noCaseDataHint')}
               </p>
             </div>
           </div>
         )}
 
         {/* Legend */}
-        <div className="absolute top-3 left-3 bg-white/95 backdrop-blur rounded-lg border border-nexus-border p-3 text-xs space-y-1.5 z-10" role="complementary" aria-label="Graph legend">
+        <div className="absolute top-3 left-3 bg-white/95 backdrop-blur rounded-lg border border-nexus-border p-3 text-xs space-y-1.5 z-10" role="complementary" aria-label={t('legendAria')}>
           {Object.entries(entityTypeColors).map(([type, color]) => (
             <div key={type} className="flex items-center gap-2">
               <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] text-white" style={{ backgroundColor: color }} aria-hidden="true">
@@ -798,16 +798,16 @@ export default function NetworkGraph() {
             </div>
           ))}
           <div className="border-t border-nexus-border pt-1 mt-1">
-            <p className="font-medium mb-1">Edge Types</p>
+            <p className="font-medium mb-1">{t('edgeTypes')}</p>
             {Object.entries(relTypeStyles).map(([type, style]) => (
               <div key={type} className="flex items-center gap-2">
                 <span className="w-4 border-t-2" style={{ borderColor: style.color, borderStyle: style.dash ? 'dashed' : 'solid' }} aria-hidden="true" />
-                <span className="capitalize">{type.replace('-', ' ')}</span>
+                <span>{relationshipTypeLabel(t, type)}</span>
               </div>
             ))}
           </div>
           <div className="border-t border-nexus-border pt-1 mt-1 text-nexus-text-secondary">
-            <p className="font-medium mb-1">Size ∝ centrality · Red ring = high risk</p>
+            <p className="font-medium mb-1">{t('sizeLegend')}</p>
           </div>
         </div>
 
@@ -815,7 +815,7 @@ export default function NetworkGraph() {
         {selectedNode && (
           <aside
             className="absolute right-3 top-3 w-64 bg-white rounded-xl shadow-xl border border-nexus-border p-4 z-20 text-sm max-h-[calc(100%-1.5rem)] overflow-y-auto"
-            aria-label={`Selected entity: ${selectedNode.name}`}
+            aria-label={`${t('selectedEntity')}: ${selectedNode.name}`}
           >
             <div className="flex items-start justify-between gap-2 mb-2">
               <div className="flex items-center gap-2 min-w-0">
@@ -828,13 +828,13 @@ export default function NetworkGraph() {
                 </span>
                 <div className="min-w-0">
                   <p className="font-bold truncate">{selectedNode.name}</p>
-                  <p className="text-xs text-nexus-text-secondary capitalize">{selectedNode.type} · {selectedNode.id}</p>
+                  <p className="text-xs text-nexus-text-secondary">{entityTypeLabel(t, selectedNode.type)} · {selectedNode.id}</p>
                 </div>
               </div>
               <button
                 onClick={() => { setSelectedNodeId(null); cyRef.current?.$('node.selected').removeClass('selected'); }}
                 className="text-nexus-text-secondary hover:text-nexus-text p-1 rounded hover:bg-nexus-surface flex-shrink-0"
-                aria-label="Close panel"
+                aria-label={t('closePanel')}
               >
                 ✕
               </button>
@@ -896,7 +896,7 @@ export default function NetworkGraph() {
                 onClick={() => { openProfile(selectedNode.id); }}
                 className="flex-1 text-xs px-2 py-1.5 border border-nexus-blue text-nexus-blue rounded-md hover:bg-nexus-blue/5"
               >
-                Dossier
+                {t('dossier')}
               </button>
             </div>
           </aside>
@@ -904,7 +904,7 @@ export default function NetworkGraph() {
 
         {/* Hint bar */}
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur rounded-full border border-nexus-border px-3 py-1 text-[11px] text-nexus-text-secondary z-10 pointer-events-none whitespace-nowrap">
-          Hover = details · Click = select + panel · Enter = dossier · Esc = close · Drag = move · Scroll = zoom
+          {t('hintBar')}
         </div>
       </div>
 
@@ -946,8 +946,8 @@ function NodeTooltipView({ data, t }: { data: NodeTooltipData; t: (k: Translatio
         <span className="font-bold text-base">{data.name}</span>
       </div>
       <div className="space-y-1 text-xs text-nexus-text-secondary">
-        <p><span className="font-medium text-nexus-text">ID:</span> {data.id}</p>
-        <p><span className="font-medium text-nexus-text">{t('type')}:</span> {data.type}</p>
+        <p><span className="font-medium text-nexus-text">{t('idLabel')}:</span> {data.id}</p>
+        <p><span className="font-medium text-nexus-text">{t('type')}:</span> {entityTypeLabel(t, data.type)}</p>
         {data.role && <p><span className="font-medium text-nexus-text">{t('role')}:</span> {data.role}</p>}
         <p>
           <span className="font-medium text-nexus-text">{t('riskLevel')}:</span>{' '}
@@ -973,16 +973,16 @@ function NodeTooltipView({ data, t }: { data: NodeTooltipData; t: (k: Translatio
 function EdgeTooltipView({ data, t }: { data: EdgeTooltipData; t: (k: TranslationKey) => string }) {
   return (
     <div className="bg-white rounded-xl shadow-xl border border-nexus-border p-4 w-72 text-sm">
-      <p className="font-bold mb-2 capitalize">{t('relationshipType')}: {data.relTypes.replace('-', ' ')}</p>
+      <p className="font-bold mb-2 capitalize">{t('relationshipType')}: {data.relTypes.split(', ').map(rt => relationshipTypeLabel(t, rt.trim())).join(' + ')}</p>
       <div className="space-y-1 text-xs text-nexus-text-secondary">
         <p><span className="font-medium text-nexus-text">{t('contactCount')}:</span> {data.count}</p>
-        {data.source && <p><span className="font-medium text-nexus-text">Between:</span> {data.source} ↔ {data.target}</p>}
+        {data.source && <p><span className="font-medium text-nexus-text">{t('between')}:</span> {data.source} ↔ {data.target}</p>}
         <p><span className="font-medium text-nexus-text">{t('connections')}:</span></p>
         <p className="ml-2">{(data.timestamps || []).slice(-3).join(', ') || '—'}</p>
         {data.isBeforeCrime && (
           <div className="mt-2 p-2 bg-red-50 rounded-md border border-red-200">
             <p className="text-nexus-risk-high font-semibold text-xs">
-              FLAGGED — {data.count || ''} contacts in the 72 hours before FIR #{data.firNumber} ({data.crimeDate})
+              {t('flaggedWindow')} — {data.count || ''} {t('contactWindow')} FIR #{data.firNumber} ({data.crimeDate})
             </p>
           </div>
         )}

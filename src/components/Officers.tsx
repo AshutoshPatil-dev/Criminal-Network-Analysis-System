@@ -101,7 +101,7 @@ export default function Officers() {
                         </div>
                         <div>
                           <p className="font-semibold text-nexus-text leading-tight">
-                            {o.name}{o.id === user?.id && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-nexus-accent text-nexus-blue font-bold">YOU</span>}
+                            {o.name}{o.id === user?.id && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-nexus-accent text-nexus-blue font-bold">{t('youBadge')}</span>}
                           </p>
                           <p className="text-xs text-nexus-text-secondary">{o.rank} · {o.badgeNumber}</p>
                         </div>

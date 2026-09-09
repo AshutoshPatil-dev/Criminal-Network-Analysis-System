@@ -27,18 +27,18 @@ const SEV_STYLE: Record<AnalysisFinding['severity'], string> = {
   low: 'bg-blue-100 text-blue-800',
 };
 
-const SCAN_STEPS = [
-  'Reading FIR records…',
-  'Cross-referencing entities…',
-  'Scoring proximity to leadership…',
-  'Correlating shared identifiers…',
-];
+const SCAN_STEP_COUNT = 4;
 
 export default function AiAnalysis() {
   const { t, addAuditLog, submittedReports, openProfile, entities, relationships, crimeEvents, centralityScores } = useApp();
   const [scanning, setScanning] = useState(true);
   const [step, setStep] = useState(0);
   const [result, setResult] = useState<LinkAnalysisResult | null>(null);
+
+  const scanSteps = [t('scanStep1'), t('scanStep2'), t('scanStep3'), t('scanStep4')];
+
+  const sevLabel = (s: string): string =>
+    s === 'high' ? t('severityHigh') : s === 'medium' ? t('severityMedium') : t('severityLow');
 
   const run = () => {
     setScanning(true);
@@ -62,7 +62,7 @@ export default function AiAnalysis() {
 
   useEffect(() => {
     if (!scanning) return;
-    const id = window.setInterval(() => setStep(s => (s + 1) % SCAN_STEPS.length), 420);
+    const id = window.setInterval(() => setStep(s => (s + 1) % SCAN_STEP_COUNT), 420);
     return () => window.clearInterval(id);
   }, [scanning]);
 
@@ -81,14 +81,14 @@ export default function AiAnalysis() {
           disabled={scanning}
           className="px-4 py-2 rounded-lg bg-nexus-blue text-white text-sm font-semibold hover:bg-nexus-blue-light disabled:opacity-40 disabled:cursor-wait transition"
         >
-          {scanning ? `… ${SCAN_STEPS[step]}` : `✦ ${t('runScan')}`}
+          {scanning ? `… ${scanSteps[step]}` : `✦ ${t('runScan')}`}
         </button>
       </div>
 
       {scanning && (
         <div className="bg-white rounded-xl shadow-sm border border-nexus-border p-10 text-center" role="status">
           <div className="mx-auto mb-4 w-12 h-12 border-4 border-nexus-blue/20 border-t-nexus-blue rounded-full animate-spin" aria-hidden="true" />
-          <p className="font-medium text-nexus-text">{SCAN_STEPS[step]}</p>
+          <p className="font-medium text-nexus-text">{scanSteps[step]}</p>
         </div>
       )}
 
@@ -126,7 +126,7 @@ export default function AiAnalysis() {
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${SEV_STYLE[f.severity]}`}>{f.severity}</span>
+                        <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${SEV_STYLE[f.severity]}`}>{sevLabel(f.severity)}</span>
                         <span className="text-xs font-medium text-nexus-text-secondary">{f.subject}</span>
                         <span className="text-[10px] font-mono text-nexus-text-secondary">{f.sourceRef}</span>
                       </div>
@@ -197,8 +197,8 @@ export default function AiAnalysis() {
                       </div>
                     </div>
                     <div className="flex items-center gap-4 mt-3 text-xs text-nexus-text-secondary border-t border-nexus-border pt-2">
-                      <span><strong className="text-nexus-text">{m.links}</strong> links surfaced</span>
-                      <span><strong className="text-nexus-text">{m.inCrimes}</strong> FIRs</span>
+                      <span><strong className="text-nexus-text">{m.links}</strong> {t('linksSurfaced')}</span>
+                      <span><strong className="text-nexus-text">{m.inCrimes}</strong> {t('firShort')}</span>
                     </div>
                   </button>
                 ))}

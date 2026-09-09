@@ -25,12 +25,12 @@ export default function Login() {
             <div className="text-4xl font-black tracking-tight">NEXUS<span className="text-nexus-accent">.</span></div>
             <p className="text-blue-200 text-sm mt-1">{t('tagline')}</p>
             <p className="mt-8 text-blue-100 leading-relaxed text-sm">
-              Restricted law-enforcement intelligence workspace. All activity is recorded in an immutable audit trail.
+              {t('loginTagline')}
             </p>
             <ul className="mt-6 space-y-2 text-sm text-blue-100">
-              <li>· Case graph &amp; link analysis</li>
-              <li>· FIR / report builder with OCR intake</li>
-              <li>· Officer &amp; evidence management</li>
+              <li>· {t('loginF1')}</li>
+              <li>· {t('loginF2')}</li>
+              <li>· {t('loginF3')}</li>
             </ul>
           </div>
           <p className="text-xs text-blue-300 mt-8">{t('loginAuthorized')}</p>
