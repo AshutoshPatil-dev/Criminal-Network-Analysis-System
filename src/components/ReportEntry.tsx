@@ -9,9 +9,10 @@ import { extractFirFromImage } from '../lib/firExtractor';
 
 type KindLabelKey =
   | 'detailPhone' | 'detailCallRecords' | 'detailAddress' | 'detailVehicle' | 'detailEmail'
-  | 'detailSocial' | 'detailBank' | 'detailTransactionHistory' | 'detailAlias' | 'detailEmployer';
+  | 'detailSocial' | 'detailBank' | 'detailTransactionHistory' | 'detailAlias' | 'detailEmployer'
+  | 'detailRole' | 'detailAge';
 
-const KIND_ORDER: DetailKind[] = ['phone', 'call_records', 'address', 'vehicle', 'email', 'social', 'bank', 'transaction_history', 'alias', 'employer'];
+const KIND_ORDER: DetailKind[] = ['phone', 'call_records', 'address', 'vehicle', 'email', 'social', 'bank', 'transaction_history', 'alias', 'employer', 'role', 'age'];
 
 const KIND_LABEL_KEY: Record<DetailKind, KindLabelKey> = {
   phone: 'detailPhone',
@@ -24,6 +25,8 @@ const KIND_LABEL_KEY: Record<DetailKind, KindLabelKey> = {
   transaction_history: 'detailTransactionHistory',
   alias: 'detailAlias',
   employer: 'detailEmployer',
+  role: 'detailRole',
+  age: 'detailAge',
 };
 
 const KIND_COLOR: Record<DetailKind, string> = {
@@ -37,6 +40,8 @@ const KIND_COLOR: Record<DetailKind, string> = {
   transaction_history: '#0EA5E9',
   alias: '#475569',
   employer: '#0D9488',
+  role: '#DB2777',
+  age: '#334155',
 };
 
 const KIND_META: Record<DetailKind, 'default' | 'address' | 'phone' | 'vehicle' | 'email' | 'social' | 'bank' | 'txn' | 'file'> = {
@@ -50,6 +55,8 @@ const KIND_META: Record<DetailKind, 'default' | 'address' | 'phone' | 'vehicle' 
   transaction_history: 'txn',
   alias: 'default',
   employer: 'default',
+  role: 'default',
+  age: 'default',
 };
 
 const TAG_KEYS = ['burner', 'suspicious', 'verified', 'shared'] as const;
