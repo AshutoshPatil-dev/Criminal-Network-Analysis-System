@@ -25,6 +25,7 @@ const parseHash = (): { screen: Screen; entityId: string | null } => {
 
 export const DEFAULT_OFFICER = 'System';
 const SESSION_KEY = 'nexus:session';
+const INACTIVITY_MS = 15 * 60 * 1000;
 
 interface AppState {
   lang: LangCode;
@@ -296,6 +297,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser(null);
     localStorage.removeItem(SESSION_KEY);
   };
+
+  // Auto sign-out: any user activity (mouse, keyboard, touch, scroll) resets a
+  // timer; after 15 minutes of total inactivity the session is ended and the
+  // logout is recorded in the audit trail.
+  useEffect(() => {
+    if (!user) return;
+    let timer: number | undefined;
+    const reset = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const name = actorName();
+        addAuditLog({ action: 'logoff', level: 'warn', summary: `${name} auto signed-out after ${INACTIVITY_MS / 60000} min of inactivity.`, target: user.badgeNumber });
+        void signOutSession();
+        setUser(null);
+        localStorage.removeItem(SESSION_KEY);
+      }, INACTIVITY_MS);
+    };
+    const events = ['mousedown', 'keydown', 'touchstart', 'wheel', 'scroll'] as const;
+    events.forEach(ev => window.addEventListener(ev, reset, { passive: true }));
+    reset();
+    return () => {
+      window.clearTimeout(timer);
+      events.forEach(ev => window.removeEventListener(ev, reset));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const refreshOfficers: AppState['refreshOfficers'] = async () => {
     if (!supabaseConfigured) return;
