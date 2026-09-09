@@ -410,6 +410,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       details: r.details || [],
       submitted_by: actorName(),
     });
+    const subject = r.subjectName.trim().toLowerCase();
+    if (subject) {
+      const match = entities.find(e =>
+        e.type === 'person' &&
+        (e.name.toLowerCase().includes(subject) || subject.includes(e.name.toLowerCase()) ||
+          (e.attributes.aliases || '').toLowerCase().split(',').some(a => a.trim() && subject.includes(a.trim()))));
+      if (match) {
+        const attrs: Record<string, string> = {};
+        for (const d of r.details || []) {
+          if (d.kind === 'role' && d.value.trim()) attrs.role = d.value.trim();
+          else if (d.kind === 'age' && d.value.trim()) attrs.age = d.value.trim();
+        }
+        if (Object.keys(attrs).length > 0) {
+          setEntities(prev => prev.map(e => e.id === match.id ? { ...e, attributes: { ...e.attributes, ...attrs } } : e));
+        }
+      }
+    }
     return id;
   };
 

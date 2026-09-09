@@ -58,7 +58,9 @@ export type DetailKind =
   | 'bank'
   | 'transaction_history'
   | 'alias'
-  | 'employer';
+  | 'employer'
+  | 'role'
+  | 'age';
 
 export interface ReportDetail {
   id: string;
