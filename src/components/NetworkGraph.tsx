@@ -630,7 +630,6 @@ export default function NetworkGraph() {
         .sort((a, b) => (b.data('riskScore') as number) - (a.data('riskScore') as number))
         .map(n => ({ id: n.data('id') as string, name: n.data('fullName') as string, type: n.data('type') as EntityType, riskScore: n.data('riskScore') as number }))
     : [];
-  const selectedCs = selectedNode ? centralityScores.find(c => c.entityId === selectedNode.id) : null;
 
   // "Collapse All" keeps the most-connected core visible instead of blanking the canvas.
   const collapseIds = useMemo(() => {
@@ -848,18 +847,6 @@ export default function NetworkGraph() {
               </span>
               <span className="text-xs text-nexus-text-secondary">{neighbors.length} {t('connections')}</span>
             </div>
-
-            {selectedCs && (
-              <div className="mb-3">
-                <div className="flex justify-between text-xs mb-0.5">
-                  <span className="text-nexus-text-secondary">{t('influence')} (PageRank)</span>
-                  <span className="font-mono">{(selectedCs.pageRank * 100).toFixed(1)}%</span>
-                </div>
-                <div className="h-1.5 bg-nexus-surface rounded-full overflow-hidden">
-                  <div className="h-full bg-nexus-blue rounded-full" style={{ width: `${Math.min(selectedCs.pageRank * 500, 100)}%` }} />
-                </div>
-              </div>
-            )}
 
             {neighbors.length > 0 && (
               <div className="mb-3">
