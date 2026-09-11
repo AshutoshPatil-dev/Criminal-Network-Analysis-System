@@ -3,7 +3,7 @@ import { entityTypeColors, riskColor, riskLabelKey } from '../utils/theme';
 import { entityTypeLabel, relationshipTypeLabel, type TranslationKey } from '../i18n';
 
 export default function EntityProfile() {
-  const { t, selectedEntityId, openProfile, goBack, entities, relationships, crimeEvents } = useApp();
+  const { t, selectedEntityId, openProfile, goBack, entities, relationships, crimeEvents, centralityScores } = useApp();
 
   const entity = selectedEntityId ? entities.find(e => e.id === selectedEntityId) : null;
 
@@ -38,6 +38,8 @@ export default function EntityProfile() {
 
   const linkedCrimes = crimeEvents.filter(ce => ce.involvedEntityIds.includes(entity.id));
   const aliases = entity.attributes.aliases ? entity.attributes.aliases.split(',').map(a => a.trim()).filter(Boolean) : [];
+
+  const centrality = centralityScores.find(c => c.entityId === entity.id);
 
   const ATTRIBUTE_KEYS: Record<string, TranslationKey> = {
     role: 'role',
@@ -105,6 +107,39 @@ export default function EntityProfile() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Details */}
         <div className="space-y-6">
+          {/* Network influence (plain-English measures) */}
+          {centrality && (
+            <div className="bg-white rounded-xl shadow-sm border border-nexus-border p-5">
+              <h3 className="font-semibold mb-1">{t('networkInfluence')}</h3>
+              <p className="text-xs text-nexus-text-secondary mb-4">{t('networkInfluenceHint')}</p>
+              <div className="space-y-4">
+                {[
+                  { key: 'directConnections', pct: centrality.degree, desc: 'directConnectionsDesc' },
+                  { key: 'goBetween', pct: centrality.betweenness, desc: 'goBetweenDesc' },
+                  { key: 'keyPlayerLinks', pct: centrality.eigenvector, desc: 'keyPlayerLinksDesc' },
+                  { key: 'overallInfluence', pct: centrality.pageRank, desc: 'overallInfluenceDesc' },
+                ].map(m => {
+                  const pct = Math.min(100, Math.max(0, m.pct * 100));
+                  return (
+                    <div key={m.key}>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-sm font-medium">{t(m.key as TranslationKey)}</span>
+                        <span className="text-sm font-semibold text-nexus-text-secondary">{pct.toFixed(1)}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-nexus-surface overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${pct}%`, backgroundColor: riskColor(entity.riskScore) }}
+                        />
+                      </div>
+                      <p className="text-xs text-nexus-text-secondary mt-1.5">{t(m.desc as TranslationKey)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Aliases */}
           {aliases.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border border-nexus-border p-5">
