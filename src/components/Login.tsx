@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useApp } from '../store';
+import { LANGUAGES } from '../i18n';
 
 export default function Login() {
-  const { t, signIn } = useApp();
+  const { t, lang, setLang, signIn } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
+  const current = LANGUAGES.find(l => l.code === lang) ?? LANGUAGES[0];
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,8 +40,50 @@ export default function Login() {
         </div>
 
         <div className="bg-white p-10">
-          <form onSubmit={submit} className="space-y-4">
+          <div className="flex items-center justify-between gap-2 mb-6">
             <h1 className="text-xl font-bold text-nexus-text">{t('signIn')}</h1>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setLangOpen(o => !o)}
+                className="px-3 py-1.5 text-sm font-medium border border-nexus-border rounded-md transition flex items-center gap-1.5 hover:bg-nexus-surface"
+                aria-label={t('language')}
+                aria-haspopup="listbox"
+                aria-expanded={langOpen}
+              >
+                <span aria-hidden="true">🌐</span>
+                <span>{current.name}</span>
+                <span aria-hidden="true" className="text-[10px]">{langOpen ? '▲' : '▼'}</span>
+              </button>
+              {langOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setLangOpen(false)} />
+                  <ul
+                    role="listbox"
+                    className="absolute right-0 z-40 mt-1 min-w-[160px] rounded-md bg-white border border-nexus-border shadow-lg overflow-hidden"
+                  >
+                    {LANGUAGES.map(l => (
+                      <li key={l.code}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={l.code === lang}
+                          onClick={() => { setLang(l.code); setLangOpen(false); }}
+                          className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-nexus-surface transition ${
+                            l.code === lang ? 'font-semibold text-nexus-blue' : 'text-nexus-text'
+                          }`}
+                        >
+                          {l.code === lang && <span aria-hidden="true">✓</span>}
+                          <span className={l.code === lang ? '' : 'pl-[18px]'}>{l.name}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          </div>
+          <form onSubmit={submit} className="space-y-4">
             <div>
               <label htmlFor="login-email" className="block text-sm font-medium text-nexus-text mb-1">{t('emailAddress')}</label>
               <input
