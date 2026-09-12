@@ -4,6 +4,7 @@ import { useApp } from '../store';
 import { entityTypeColors, riskColor } from '../utils/theme';
 import type { Entity, EntityType, RelationshipType, Relationship, CrimeEvent, Community } from '../types';
 import { type TranslationKey, entityTypeLabel, relationshipTypeLabel } from '../i18n';
+import { simulateRemoval, pairKey, type SimTargetKind, type SimulationResult } from '../lib/simulator';
 
 const relTypeStyles: Record<RelationshipType, { color: string; dash?: string }> = {
   call: { color: '#64748B' },
@@ -15,6 +16,26 @@ const relTypeStyles: Record<RelationshipType, { color: string; dash?: string }> 
 };
 
 const communityColors = ['#0B3D91', '#16A34A', '#F59E0B', '#DC2626'];
+
+// Shared COSE layout options so every graph pass (initial, expand, simulation)
+// renders the same way. Sizes ride along as cached node data('size').
+const coseLayout = (animate: boolean) => ({
+  ...{},
+  name: 'cose' as const,
+  animate,
+  animationDuration: animate ? 500 : 400,
+  fit: true,
+  padding: 90,
+  nodeDimensionsIncludeLabels: true,
+  randomize: false,
+  nodeRepulsion: (node: NodeSingular) => 26000 + Math.pow(node.data('size') as number, 2.4),
+  idealEdgeLength: () => 240,
+  edgeElasticity: () => 24,
+  gravity: 0.12,
+  numIter: 1400,
+  coolingFactor: 0.95,
+  componentSpacing: 260,
+});
 
 // Visual glyphs used on the graph canvas — person 👤, phone 📱, vehicle 🚗,
 // location 📍, organization 🏢 — plus the base node size per type.
@@ -213,6 +234,18 @@ export default function NetworkGraph() {
   const [entityQuery, setEntityQuery] = useState('');
   const [timelineOpen, setTimelineOpen] = useState(true);
 
+  // What-If Investigation Simulator — read-only, overrides graph visuals only.
+  const [sim, setSim] = useState<{
+    open: boolean;
+    targetKind: SimTargetKind;
+    targetId: string;
+    result: SimulationResult | null;
+    comparing: boolean;
+  }>({ open: false, targetKind: 'entity', targetId: '', result: null, comparing: false });
+  // Latest sim state for the cytoscape handlers (avoids rebuilding the graph).
+  const simRef = useRef(sim);
+  useEffect(() => { simRef.current = sim; }, [sim]);
+
   // Latest openProfile for the graph event handlers, kept fresh without making
   // the graph builder (or its cytoscape instance) depend on its identity.
   const openProfileRef = useRef(openProfile);
@@ -223,6 +256,94 @@ export default function NetworkGraph() {
   useEffect(() => { colorByRef.current = colorBy; }, [colorBy]);
   const filterTypeRef = useRef(filterType);
   useEffect(() => { filterTypeRef.current = filterType; }, [filterType]);
+
+  // ── What-If simulator helpers ─────────────────────────────────────────────
+  const entityName = (id: string) => entities.find(e => e.id === id)?.name ?? id;
+
+  const entityOptions = useMemo(() => {
+    const byType: EntityType[] = ['person', 'phone', 'vehicle', 'location', 'org'];
+    return byType
+      .map(type => ({
+        type,
+        items: entities
+          .filter(e => e.type === type)
+          .map(e => ({ id: e.id, name: e.name }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+      .filter(g => g.items.length > 0);
+  }, [entities]);
+
+  // Merged A↔B connections offered as removable targets in the simulator.
+  const pairOptions = useMemo(() => {
+    const seen = new Map<string, { source: string; target: string }>();
+    relationships.forEach(r => {
+      const k = pairKey(r.source, r.target);
+      if (!seen.has(k)) seen.set(k, { source: r.source, target: r.target });
+    });
+    return Array.from(seen.entries())
+      .map(([key, v]) => ({ key, label: `${entityName(v.source)} ↔ ${entityName(v.target)}` }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [relationships, entities]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pairLabel = (key: string) => pairOptions.find(o => o.key === key)?.label ?? key;
+
+  // Paint the read-only simulation visuals (removed/severed/disconnected).
+  const applySimVisuals = (cy: Core) => {
+    cy.elements().removeClass('sim-removed sim-severed sim-disconnected');
+    const { result, comparing } = simRef.current;
+    if (!result || !comparing) return;
+    if (result.target.kind === 'entity') {
+      const n = cy.getElementById(result.target.id);
+      if (n.nonempty()) n.addClass('sim-removed');
+    }
+    const severed = new Set(result.severedLinks.map(l => pairKey(l.source, l.target)));
+    cy.edges().forEach(e => {
+      if (severed.has(pairKey(e.data('source') as string, e.data('target') as string))) {
+        e.addClass('sim-severed');
+      }
+    });
+    result.disconnectedEntityIds.forEach(id => {
+      const n = cy.getElementById(id);
+      if (n.nonempty()) n.addClass('sim-disconnected');
+    });
+  };
+
+  const runSimLayout = () => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    if (layoutRef.current) layoutRef.current.stop();
+    const layout = cy.layout(coseLayout(true));
+    layoutRef.current = layout;
+    layout.run();
+  };
+
+  const simRun = () => {
+    if (!sim.targetId) return;
+    const label = sim.targetKind === 'entity'
+      ? entityName(sim.targetId)
+      : pairLabel(sim.targetId);
+    setSim(prev => ({
+      ...prev,
+      result: simulateRemoval(entities, relationships, {
+        kind: prev.targetKind,
+        id: prev.targetId,
+        label,
+      }),
+      comparing: true,
+    }));
+  };
+
+  const simToggleCompare = () => setSim(prev => ({ ...prev, comparing: !prev.comparing }));
+
+  const simReset = () => {
+    setSim({ open: false, targetKind: 'entity', targetId: '', result: null, comparing: false });
+    setSelectedNodeId(null);
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.elements().removeClass('sim-removed sim-severed sim-disconnected focused faded unfaded');
+    cy.$('node.selected, edge.selected').removeClass('selected');
+    runSimLayout();
+  };
 
   const entityMatches = useMemo(() => {
     const q = entityQuery.trim().toLowerCase();
@@ -316,22 +437,7 @@ export default function NetworkGraph() {
       container: el,
       elements,
       boxSelectionEnabled: true,
-      layout: {
-        name: 'cose',
-        animate: true,
-        animationDuration: 500,
-        fit: true,
-        padding: 90,
-        nodeDimensionsIncludeLabels: true,
-        randomize: false,
-        nodeRepulsion: (node: NodeSingular) => 26000 + Math.pow(node.data('size') as number, 2.4),
-        idealEdgeLength: () => 240,
-        edgeElasticity: () => 24,
-        gravity: 0.12,
-        numIter: 1400,
-        coolingFactor: 0.95,
-        componentSpacing: 260,
-      },
+      layout: coseLayout(true),
       style: [
         {
           selector: 'node',
@@ -450,6 +556,39 @@ export default function NetworkGraph() {
           selector: 'edge.unfaded',
           style: { 'opacity': 1 },
         },
+        // What-If simulator: removed target, severed connections, disconnected stay-behind nodes
+        {
+          selector: 'node.sim-removed',
+          style: {
+            'background-color': '#9CA3AF',
+            'background-opacity': 0.28,
+            'border-width': 3,
+            'border-color': '#DC2626',
+            'border-style': 'dashed',
+            'label': 'data(icon)',
+            'text-opacity': 0.35,
+            'opacity': 0.55,
+            'z-index': 5,
+          },
+        },
+        {
+          selector: 'edge.sim-severed',
+          style: {
+            'line-color': '#DC2626',
+            'line-opacity': 0.95,
+            'line-style': 'dashed',
+            'z-index': 3,
+          },
+        },
+        {
+          selector: 'node.sim-disconnected',
+          style: {
+            'border-width': 4,
+            'border-color': '#F59E0B',
+            'border-style': 'solid',
+            'z-index': 25,
+          },
+        },
       ],
       minZoom: 0.2,
       maxZoom: 4,
@@ -564,6 +703,24 @@ export default function NetworkGraph() {
       }
     });
 
+    // Tap an edge → open the What-If simulator targeting that whole A↔B connection
+    cy.on('tap', 'edge', (evt) => {
+      const edge = evt.target as EdgeSingular;
+      const sId = edge.data('source') as string;
+      const tId = edge.data('target') as string;
+      cy.elements().removeClass('faded unfaded focused');
+      cy.$('node.selected, edge.selected').removeClass('selected');
+      edge.addClass('selected');
+      setSelectedNodeId(null);
+      setSim(prev => ({
+        ...prev,
+        open: true,
+        targetKind: 'relationship',
+        targetId: pairKey(sId, tId),
+        result: null,
+      }));
+    });
+
     // Native double-click/double-tap → open dossier
     const openDossier = (id: string) => {
       openProfileRef.current(id);
@@ -575,6 +732,7 @@ export default function NetworkGraph() {
     cy.resize();
     applyColors(cy, colorByRef.current);
     applyFilter(cy, filterTypeRef.current);
+    applySimVisuals(cy);
 
     cyRef.current = cy;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -608,6 +766,16 @@ export default function NetworkGraph() {
     if (!cy) return;
     applyColors(cy, colorBy);
   }, [colorBy]);
+
+  // Simulate / compare: re-paint override classes and re-lay only when the result flips.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    applySimVisuals(cy);
+    if (!sim.result) return;
+    runSimLayout();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sim.result, sim.comparing]);
 
   // Escape closes the side panel · Enter opens the dossier of the selected node
   useEffect(() => {
@@ -701,6 +869,15 @@ export default function NetworkGraph() {
           <button onClick={() => setExpandedNodeIds(entities.map(e => e.id))} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('expandAll')}</button>
           <button onClick={() => setExpandedNodeIds(collapseIds)} className="text-sm px-3 py-1.5 border border-nexus-border rounded-md hover:bg-nexus-surface">{t('collapseAll')}</button>
           <button onClick={handleExport} className="text-sm px-3 py-1.5 bg-nexus-blue text-white rounded-md hover:bg-nexus-blue-light">{t('exportGraph')}</button>
+          <button
+            onClick={() => setSim(prev => ({ ...prev, open: !prev.open }))}
+            className={`text-sm px-3 py-1.5 rounded-md border transition ${sim.open ? 'bg-nexus-risk-high text-white border-nexus-risk-high' : 'border-nexus-border hover:bg-nexus-surface'}`}
+            aria-expanded={sim.open}
+            aria-controls="simulator-panel"
+            title={t('whatIf')}
+          >
+            {sim.open ? '✕ ' : '🧪 '}{t('simOpen')}
+          </button>
         </div>
       </div>
 
@@ -811,7 +988,7 @@ export default function NetworkGraph() {
         </div>
 
         {/* Selection side panel */}
-        {selectedNode && (
+        {selectedNode && !sim.open && (
           <aside
             className="absolute right-3 top-3 w-64 bg-white rounded-xl shadow-xl border border-nexus-border p-4 z-20 text-sm max-h-[calc(100%-1.5rem)] overflow-y-auto"
             aria-label={`${t('selectedEntity')}: ${selectedNode.name}`}
@@ -886,7 +1063,160 @@ export default function NetworkGraph() {
                 {t('dossier')}
               </button>
             </div>
+            <button
+              onClick={() => setSim(prev => ({ ...prev, open: true, targetKind: 'entity', targetId: selectedNode.id, result: null }))}
+              className="mt-2 w-full text-xs px-2 py-1.5 border border-nexus-risk-high text-nexus-risk-high rounded-md hover:bg-nexus-risk-high/5 font-medium"
+              title={t('whatIf')}
+            >
+              🧪 {t('simRun')} · {selectedNode.name}
+            </button>
           </aside>
+        )}
+
+        {/* What-If simulator overlay panel */}
+        {sim.open && (
+          <aside
+            id="simulator-panel"
+            className="absolute right-3 top-3 bottom-3 w-80 bg-white rounded-xl shadow-2xl border border-nexus-risk-high/40 p-4 z-30 text-sm flex flex-col gap-3 overflow-y-auto"
+            aria-label={t('whatIf')}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 className="font-bold text-nexus-text">🧪 {t('whatIf')}</h2>
+                <p className="text-xs text-nexus-text-secondary mt-0.5">{t('simTargetSub')}</p>
+              </div>
+              <button onClick={simReset} className="text-nexus-text-secondary hover:text-nexus-text p-1 rounded hover:bg-nexus-surface flex-shrink-0" aria-label={t('simClose')}>✕</button>
+            </div>
+
+            <div className="flex gap-1.5" role="group" aria-label={t('whatIf')}>
+              {(['entity', 'relationship'] as const).map(kind => (
+                <button
+                  key={kind}
+                  onClick={() => setSim(prev => ({ ...prev, targetKind: kind, targetId: '', result: null, comparing: false }))}
+                  className={`flex-1 text-xs px-2 py-1.5 rounded-md border transition ${sim.targetKind === kind ? 'bg-nexus-blue text-white border-nexus-blue' : 'border-nexus-border text-nexus-text-secondary hover:bg-nexus-surface'}`}
+                >
+                  {kind === 'entity' ? `👤 ${t('simKindNode')}` : `🔗 ${t('simKindLink')}`}
+                </button>
+              ))}
+            </div>
+
+            {sim.targetKind === 'entity' && (
+              <select
+                value={sim.targetId}
+                onChange={e => setSim(prev => ({ ...prev, targetId: e.target.value, result: null, comparing: false }))}
+                className="border border-nexus-border rounded-md px-2.5 py-1.5 text-sm bg-white"
+                aria-label={t('simPickEntity')}
+              >
+                <option value="">{t('simEntityPlaceholder')}</option>
+                {entityOptions.map(g => (
+                  <optgroup key={g.type} label={g.type === 'org' ? t('organizations') : g.type === 'person' ? t('persons') : t(pluralKey(g.type))}>
+                    {g.items.map(item => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            )}
+            {sim.targetKind === 'relationship' && pairOptions.length > 0 && (
+              <select
+                value={sim.targetId}
+                onChange={e => setSim(prev => ({ ...prev, targetId: e.target.value, result: null, comparing: false }))}
+                className="border border-nexus-border rounded-md px-2.5 py-1.5 text-sm bg-white"
+                aria-label={t('simPickLink')}
+              >
+                <option value="">{t('simLinkPlaceholder')}</option>
+                {pairOptions.map(o => (
+                  <option key={o.key} value={o.key}>{o.label}</option>
+                ))}
+              </select>
+            )}
+            <p className="text-[11px] text-nexus-text-secondary -mt-1.5">{t('simSelectHint')}</p>
+
+            <div className="flex flex-col gap-1.5">
+              <button
+                onClick={simRun}
+                disabled={!sim.targetId}
+                className="px-3 py-2 bg-nexus-risk-high text-white rounded-md hover:bg-red-700 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ⚡ {t('simRun')}
+              </button>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={simToggleCompare}
+                  disabled={!sim.result}
+                  className={`flex-1 text-xs px-2 py-1.5 rounded-md border font-medium transition disabled:opacity-40 disabled:cursor-not-allowed ${sim.result ? (sim.comparing ? 'bg-nexus-blue text-white border-nexus-blue' : 'bg-white text-nexus-blue border-nexus-blue') : 'border-nexus-border text-nexus-text-secondary'}`}
+                  title={t('simCompareHint')}
+                >
+                  {t('simCompare')}{sim.result ? ` — ${sim.comparing ? t('simShowSimulated') : t('simShowOriginal')}` : ''}
+                </button>
+                <button
+                  onClick={simReset}
+                  className="flex-1 text-xs px-2 py-1.5 rounded-md border border-nexus-border text-nexus-text-secondary hover:bg-nexus-surface font-medium"
+                >
+                  ↺ {t('simReset')}
+                </button>
+              </div>
+            </div>
+
+            {sim.result ? (
+              <div className="space-y-3 border-t border-nexus-border pt-3">
+                <div>
+                  <p className="text-xs font-semibold text-nexus-text uppercase tracking-wide mb-1.5">{t('simResultsTitle')}</p>
+                  <div className="grid grid-cols-3 gap-1.5 text-center">
+                    {[
+                      { label: t('simStatRels'), value: sim.result.affectedRelationships },
+                      { label: t('simStatDisc'), value: sim.result.disconnectedEntityIds.length },
+                      { label: t('simStatGroups'), value: sim.result.componentCountAfter },
+                    ].map(s => (
+                      <div key={s.label} className="bg-nexus-surface rounded-lg py-2 px-1">
+                        <p className="text-lg font-bold text-nexus-blue leading-none">{s.value}</p>
+                        <p className="text-[10px] text-nexus-text-secondary mt-1 leading-tight">{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className={`p-2.5 rounded-lg border text-xs ${sim.result.isBridge ? 'bg-red-50 border-red-200 text-nexus-risk-high' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                  <p className="font-semibold">{t('simImpactTitle')}:</p>
+                  <p className="mt-0.5">{sim.result.isBridge ? t('simImpactBridge') : t('simImpactNoSplit')}</p>
+                </div>
+
+                <ul className="space-y-1.5 pl-4 list-disc text-xs text-nexus-text-secondary">
+                  {sim.result.sentences.map((s, i) => <li key={i} className="leading-snug">{s}</li>)}
+                </ul>
+
+                {sim.result.severedLinks.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-nexus-text uppercase tracking-wide mb-1.5">{t('simSeveredTitle')}</p>
+                    <ul className="space-y-1">
+                      {sim.result.severedLinks.map((l, i) => (
+                        <li key={i} className="flex items-center justify-between gap-2 text-xs bg-nexus-surface rounded-md px-2 py-1.5">
+                          <span className="truncate min-w-0">
+                            {entityName(l.source)} ↔ {entityName(l.target)}
+                            <span className="text-nexus-text-secondary block text-[10px]">{l.types.map(rt => relationshipTypeLabel(t, rt)).join(' + ')}</span>
+                          </span>
+                          <span className={`flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${l.alternativePathExists ? 'bg-green-100 text-green-700' : 'bg-red-100 text-nexus-risk-high'}`}>
+                            {l.alternativePathExists ? t('simAltYes') : t('simAltNo')}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <p className="text-[11px] italic text-nexus-text-secondary border-t border-nexus-border pt-2">⚠ {t('simDisclaimer')}</p>
+              </div>
+            ) : (
+              <p className="text-xs text-nexus-text-secondary border-t border-nexus-border pt-3">{t('simNoResultHint')}</p>
+            )}
+          </aside>
+        )}
+
+        {/* Sim mode counter badge */}
+        {sim.open && sim.result && (
+          <div className={`absolute bottom-2 right-3 rounded-full px-3 py-1 text-[11px] font-bold shadow z-10 pointer-events-none ${sim.comparing ? 'bg-red-600 text-white' : 'bg-nexus-blue text-white'}`}>
+            {t('simSimBadge')} · {sim.comparing ? t('simShowSimulated') : t('simShowOriginal')}
+          </div>
         )}
 
         {/* Hint bar */}
